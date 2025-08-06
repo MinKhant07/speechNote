@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -22,11 +22,56 @@ type Note = {
   date: string;
 };
 
-// Check for SpeechRecognition API
 let SpeechRecognition: any = null;
 if (typeof window !== 'undefined') {
   SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
 }
+
+function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void }) {
+  const [apiKey, setApiKey] = useState('');
+
+  const handleSubmit = () => {
+    if (apiKey.trim()) {
+      onApiKeySubmit(apiKey.trim());
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <Card className="w-full max-w-md shadow-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 font-headline">
+            <KeyRound className="text-primary" />
+            Enter Your Google AI API Key
+          </CardTitle>
+          <CardDescription>
+            To use SpeechNoteMm, please provide your Google AI API key. Your key will be saved securely in your browser.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Input
+            type="password"
+            placeholder="Enter your API key here..."
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            className="text-base"
+          />
+          <Button onClick={handleSubmit} className="w-full bg-accent hover:bg-accent/90">
+            Start Using SpeechNoteMm
+          </Button>
+          <p className="text-xs text-center text-muted-foreground pt-2">
+            Get your key from{' '}
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline text-primary">
+              Google AI Studio
+            </a>.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 
 export default function LinguaNotePage() {
   const { toast } = useToast();
@@ -38,58 +83,56 @@ export default function LinguaNotePage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Welcome! Your notes are saved in this browser.');
   const [isMounted, setIsMounted] = useState(false);
-  const [apiKey, setApiKey] = useState('');
+  const [apiKey, setApiKey] = useState<string | null>(null);
   
   const recognitionRef = useRef<any>(null);
-  const editorContentRef = useRef('');
-
-  useEffect(() => {
-    editorContentRef.current = editorContent;
-  }, [editorContent]);
 
   useEffect(() => {
     setIsMounted(true);
     try {
-      const savedNotes = localStorage.getItem('linguanotes');
-      if (savedNotes) {
-        setNotes(JSON.parse(savedNotes));
-      }
       const savedApiKey = localStorage.getItem('geminiApiKey');
       if (savedApiKey) {
         setApiKey(savedApiKey);
+      }
+      
+      const savedNotes = localStorage.getItem('linguanotes');
+      if (savedNotes) {
+        setNotes(JSON.parse(savedNotes));
       }
     } catch (error) {
       console.error("Failed to load data from localStorage", error);
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to load saved data.' });
     }
-
-    if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      const recognition = recognitionRef.current;
-      recognition.continuous = true;
-      recognition.interimResults = true;
-
-      recognition.onstart = () => setIsRecording(true);
-      recognition.onend = () => setIsRecording(false);
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        toast({ variant: 'destructive', title: 'Speech Recognition Error', description: `Error: ${event.error}. Please check microphone permissions.` });
-        setIsRecording(false);
-      };
-
-      recognition.onresult = (event: any) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript.trim() + ' ';
-          }
-        }
-        if (finalTranscript) {
-          setEditorContent(prev => prev + finalTranscript);
-        }
-      };
-    }
   }, [toast]);
+  
+  useEffect(() => {
+    if (!apiKey || !SpeechRecognition) return;
+
+    recognitionRef.current = new SpeechRecognition();
+    const recognition = recognitionRef.current;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onend = () => setIsRecording(false);
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      toast({ variant: 'destructive', title: 'Speech Recognition Error', description: `Error: ${event.error}. Please check microphone permissions.` });
+      setIsRecording(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript.trim() + ' ';
+        }
+      }
+      if (finalTranscript) {
+        setEditorContent(prev => prev + finalTranscript);
+      }
+    };
+  }, [apiKey, toast]);
 
   useEffect(() => {
     if (isMounted) {
@@ -101,17 +144,23 @@ export default function LinguaNotePage() {
       }
     }
   }, [notes, isMounted, toast]);
-
-  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newApiKey = e.target.value;
+  
+  const handleApiKeySubmit = (newApiKey: string) => {
     setApiKey(newApiKey);
     try {
       localStorage.setItem('geminiApiKey', newApiKey);
+      toast({ title: 'API Key Saved!', description: 'You can now start using the app.' });
     } catch (error) {
-      console.error("Failed to save API key to localStorage", error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not save your API key.' });
+       console.error("Failed to save API key to localStorage", error);
+       toast({ variant: 'destructive', title: 'Error', description: 'Could not save your API key.' });
     }
   };
+
+  const handleChangeApiKey = () => {
+     setApiKey(null);
+     localStorage.removeItem('geminiApiKey');
+     toast({ title: 'API Key Removed', description: 'Please enter a new API key to continue.' });
+  }
 
   const handleStartRecording = useCallback(() => {
     const recognition = recognitionRef.current;
@@ -135,12 +184,7 @@ export default function LinguaNotePage() {
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!apiKey) {
-        toast({ variant: 'destructive', title: 'API Key Required', description: 'Please enter your Google AI API key to transcribe audio files.' });
-        return;
-    }
+    if (!file || !apiKey) return;
   
     if (!file.type.startsWith('audio/')) {
         toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please select an audio file.' });
@@ -240,32 +284,35 @@ export default function LinguaNotePage() {
   if (!isMounted) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background p-4 md:p-8">
-        <div className="w-full max-w-6xl mx-auto space-y-4">
-          <Skeleton className="h-12 w-1/4" />
-          <div className="flex flex-col md:flex-row gap-8">
-            <div className="w-full md:w-2/3 space-y-4">
-              <Skeleton className="h-40" />
-              <Skeleton className="h-64" />
-            </div>
-            <div className="w-full md:w-1/3 space-y-4">
-              <Skeleton className="h-12" />
-              <Skeleton className="h-20" />
-              <Skeleton className="h-20" />
-              <Skeleton className="h-20" />
-            </div>
-          </div>
-        </div>
+        <Loader2 className="h-16 w-16 animate-spin text-primary" />
       </div>
     );
   }
+
+  if (!apiKey) {
+    return <ApiKeyEntry onApiKeySubmit={handleApiKeySubmit} />;
+  }
+
 
   return (
     <TooltipProvider>
       <div className="min-h-screen bg-background text-foreground">
         <header className="p-4 border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto flex items-center gap-3">
-            <AudioLines className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold font-headline text-primary">SpeechNoteMm</h1>
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+             <div className="flex items-center gap-3">
+                <AudioLines className="h-8 w-8 text-primary" />
+                <h1 className="text-2xl font-bold font-headline text-primary">SpeechNoteMm</h1>
+             </div>
+             <Tooltip>
+                <TooltipTrigger asChild>
+                   <Button variant="outline" size="sm" onClick={handleChangeApiKey}>
+                      <KeyRound className="mr-2 h-4 w-4" /> Change API Key
+                   </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                   <p>Remove current API Key and enter a new one.</p>
+                </TooltipContent>
+             </Tooltip>
           </div>
         </header>
 
@@ -320,46 +367,16 @@ export default function LinguaNotePage() {
                     )}
                     <Tooltip>
                        <TooltipTrigger asChild>
-                          <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isTranscribing || isRecording || !apiKey}>
+                          <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isTranscribing || isRecording}>
                              <label htmlFor="file-upload">
                               {isTranscribing ? <Loader2 className="animate-spin"/> : <Upload />}
-                              <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isTranscribing || isRecording || !apiKey}/>
+                              <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isTranscribing || isRecording}/>
                              </label>
                           </Button>
                        </TooltipTrigger>
-                       <TooltipContent><p>{apiKey ? 'Upload Audio File' : 'Please enter API Key to upload'}</p></TooltipContent>
+                       <TooltipContent><p>Upload Audio File</p></TooltipContent>
                     </Tooltip>
                   </div>
-                </div>
-                 <div className="flex flex-col gap-2">
-                    <label htmlFor="api-key" className="flex items-center text-sm font-medium text-muted-foreground">
-                        <KeyRound className="mr-2 h-4 w-4" />
-                        Google AI API Key
-                    </label>
-                    {apiKey ? (
-                       <div className="flex items-center gap-2">
-                          <Input value="••••••••••••••••••••••••" readOnly disabled className="font-mono"/>
-                          <Button variant="secondary" onClick={() => setApiKey('')}>
-                             <Pencil className="mr-2 h-4 w-4" /> Change Key
-                          </Button>
-                       </div>
-                    ) : (
-                       <>
-                         <Input 
-                             id="api-key"
-                             type="password"
-                             placeholder="Enter your Google AI API key"
-                             value={apiKey}
-                             onChange={handleApiKeyChange}
-                         />
-                         <p className="text-xs text-muted-foreground">
-                             Your key is saved in your browser. Get your key from {' '}
-                             <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline text-primary">
-                                Google AI Studio
-                             </a>.
-                         </p>
-                       </>
-                    )}
                 </div>
               </CardContent>
             </Card>
