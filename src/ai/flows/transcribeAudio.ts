@@ -15,7 +15,7 @@ const TranscribeAudioInputSchema = z.object({
   audioDataUri: z
     .string()
     .describe(
-      "An audio file, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
+      "An audio file, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'"
     ),
   apiKey: z.string().optional().describe('An optional Google AI API key.'),
 });
@@ -42,15 +42,14 @@ const transcribeAudioFlow = ai.defineFlow(
     outputSchema: TranscribeAudioOutputSchema,
   },
   async (input) => {
-    let model = ai.getModel('googleai/gemini-2.0-flash');
+    let model = googleAI.model('gemini-2.0-flash');
 
     if (input.apiKey) {
       // If a user-provided API key exists, initialize a new Google AI plugin
       // instance with that key and get the model from it.
-      const userGoogleAI = googleAI({ apiKey: input.apiKey });
-      model = genkit({ plugins: [userGoogleAI] }).getModel(
-        'googleai/gemini-2.0-flash'
-      );
+      model = googleAI.model('gemini-2.0-flash', {
+        clientOptions: { apiKey: input.apiKey },
+      });
     } else {
         // For self-hosted deployments, you might have a default key set up.
         // If no key is available at all, this will fail.
@@ -63,7 +62,7 @@ const transcribeAudioFlow = ai.defineFlow(
     );
     
     return {
-      transcript: output()?.transcript ?? '',
+      transcript: output?.transcript ?? '',
     };
   }
 );
