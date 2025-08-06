@@ -33,7 +33,7 @@ export default function LinguaNotePage() {
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Welcome to SpeechNoteMm.');
+  const [statusMessage, setStatusMessage] = useState('Welcome! Your notes are saved in this browser.');
   const [isMounted, setIsMounted] = useState(false);
   
   const recognitionRef = useRef<any>(null);
@@ -125,14 +125,14 @@ export default function LinguaNotePage() {
     
     setStatusMessage(`Uploading "${file.name}"...`);
     await new Promise(res => setTimeout(res, 1500));
-    setStatusMessage(`Transcribing audio... (demo)`);
+    setStatusMessage(`Transcribing audio... (This is a demo and not a real transcription)`);
     await new Promise(res => setTimeout(res, 2000));
 
-    const dummyText = `\n(Dummy transcription for ${file.name}. Server-side logic is needed for real transcription.)\n`;
+    const dummyText = `\n(Dummy transcription for ${file.name}. Real transcription requires server-side logic.)\n`;
     setEditorContent(prev => prev + dummyText);
-    setStatusMessage(`Transcription for "${file.name}" complete.`);
+    setStatusMessage(`Demo transcription for "${file.name}" complete.`);
     event.target.value = '';
-    toast({ title: 'Success', description: 'Dummy transcription complete.' });
+    toast({ title: 'Success', description: 'Demo transcription complete.' });
   }, [toast]);
 
   const handleNewNote = useCallback(() => {
@@ -161,7 +161,7 @@ export default function LinguaNotePage() {
       setActiveNoteId(newNote.id);
       toast({ title: 'Note Saved', description: `"${title}" has been saved.` });
     }
-    setStatusMessage('Note saved successfully.');
+    setStatusMessage('Note saved to this browser successfully.');
   }, [editorContent, activeNoteId, notes, toast]);
 
   const handleSelectNote = useCallback((note: Note) => {
