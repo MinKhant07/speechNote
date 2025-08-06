@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -187,6 +187,12 @@ export default function LinguaNotePage() {
     }
     toast({ title: 'Note Deleted', description: `"${deletedNote?.title}" has been deleted.` });
   }, [isRecording, notes, activeNoteId, toast, handleNewNote]);
+
+  const handleCopyNote = useCallback((e: React.MouseEvent, content: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(content);
+    toast({ title: 'Copied!', description: 'Note content copied to clipboard.' });
+  }, [toast]);
   
   if (!isMounted) {
     return (
@@ -325,20 +331,36 @@ export default function LinguaNotePage() {
                                 {format(new Date(note.date), "PPP p")}
                               </time>
                             </div>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0 opacity-50 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => handleDeleteNote(e, note.id)}
-                                  aria-label="Delete note"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent><p>Delete Note</p></TooltipContent>
-                            </Tooltip>
+                            <div className="flex items-center opacity-50 group-hover:opacity-100 transition-opacity">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:bg-primary/10 hover:text-primary shrink-0"
+                                    onClick={(e) => handleCopyNote(e, note.content)}
+                                    aria-label="Copy note"
+                                  >
+                                    <Copy className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent><p>Copy Note</p></TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0"
+                                    onClick={(e) => handleDeleteNote(e, note.id)}
+                                    aria-label="Delete note"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent><p>Delete Note</p></TooltipContent>
+                              </Tooltip>
+                            </div>
                           </div>
                         </div>
                       ))
