@@ -9,6 +9,7 @@
 
 import { ai } from '@/ai/genkit';
 import { googleAI } from '@genkit-ai/googleai';
+import { GoogleAI } from '@genkit-ai/googleai/plugin';
 import { z } from 'genkit';
 
 const TranscribeAudioInputSchema = z.object({
@@ -28,8 +29,8 @@ export type TranscribeAudioOutput = z.infer<typeof TranscribeAudioOutputSchema>;
 
 const transcriptionPrompt = ai.definePrompt({
   name: 'transcriptionPrompt',
-  // Note: We don't specify input/output schema here because we will dynamically
-  // provide the model based on whether a user API key is present.
+  input: { schema: z.object({ audioDataUri: z.string() }) },
+  output: { schema: TranscribeAudioOutputSchema },
   prompt: `Transcribe the following audio recording.
   
   Audio: {{media url=audioDataUri}}`,
@@ -47,9 +48,8 @@ const transcribeAudioFlow = ai.defineFlow(
     if (input.apiKey) {
       // If a user-provided API key exists, initialize a new Google AI plugin
       // instance with that key and get the model from it.
-      model = googleAI.model('gemini-2.0-flash', {
-        clientOptions: { apiKey: input.apiKey },
-      });
+      const userGoogleAI = new GoogleAI({ clientOptions: { apiKey: input.apiKey }});
+      model = userGoogleAI.model('gemini-2.0-flash');
     } else {
         // For self-hosted deployments, you might have a default key set up.
         // If no key is available at all, this will fail.
