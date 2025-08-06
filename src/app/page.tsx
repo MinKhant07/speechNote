@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,9 +11,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from "@/hooks/use-toast";
 import { transcribeAudio } from '@/ai/flows/transcribeAudio';
+import { suggestTitle } from '@/ai/flows/suggestTitle';
 
 type Note = {
   id: string;
@@ -78,9 +78,11 @@ export default function LinguaNotePage() {
   const [language, setLanguage] = useState('en-US');
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [editorTitle, setEditorTitle] = useState('');
   const [editorContent, setEditorContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSuggestingTitle, setIsSuggestingTitle] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Welcome! Your notes are saved in this browser.');
   const [isMounted, setIsMounted] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -221,10 +223,34 @@ export default function LinguaNotePage() {
         setIsTranscribing(false);
     };
   }, [toast, apiKey]);
+  
+  const handleSuggestTitle = useCallback(async () => {
+    if (!editorContent.trim() || !apiKey) {
+      toast({ variant: 'destructive', title: 'Cannot Suggest Title', description: 'Note content is empty. Please type or dictate something first.' });
+      return;
+    }
+    
+    setIsSuggestingTitle(true);
+    setStatusMessage('Generating a title for your note...');
+    try {
+      const result = await suggestTitle({ content: editorContent, apiKey });
+      setEditorTitle(result.title);
+      setStatusMessage('Title suggestion complete.');
+      toast({ title: 'Title Suggested!', description: 'A new title has been generated.' });
+    } catch(error) {
+      console.error('Title suggestion error:', error);
+      const errorMessage = (error instanceof Error) ? error.message : 'An unknown error occurred.';
+      setStatusMessage('Title suggestion failed.');
+      toast({ variant: 'destructive', title: 'Suggestion Error', description: `Failed to suggest a title. Reason: ${errorMessage}` });
+    } finally {
+      setIsSuggestingTitle(false);
+    }
+  }, [editorContent, apiKey, toast]);
 
   const handleNewNote = useCallback(() => {
     if (isRecording) handleStopRecording();
     setActiveNoteId(null);
+    setEditorTitle('');
     setEditorContent('');
     setStatusMessage('Started a new note.');
   }, [isRecording, handleStopRecording]);
@@ -235,21 +261,21 @@ export default function LinguaNotePage() {
       return;
     }
     const date = new Date().toISOString();
-    const title = editorContent.substring(0, 40).split('\n')[0] || 'Untitled Note';
+    const title = editorTitle.trim() || editorContent.substring(0, 40).split('\n')[0] || 'Untitled Note';
 
     if (activeNoteId) {
       setNotes(notes.map(note =>
-        note.id === activeNoteId ? { ...note, content: editorContent, title, date } : note
+        note.id === activeNoteId ? { ...note, title, content: editorContent, date } : note
       ));
       toast({ title: 'Note Updated', description: `"${title}" has been updated.` });
     } else {
-      const newNote: Note = { id: `note-${Date.now()}`, content: editorContent, title, date };
+      const newNote: Note = { id: `note-${Date.now()}`, title, content: editorContent, date };
       setNotes(prevNotes => [newNote, ...prevNotes]);
       setActiveNoteId(newNote.id);
       toast({ title: 'Note Saved', description: `"${title}" has been saved.` });
     }
     setStatusMessage('Note saved to this browser successfully.');
-  }, [editorContent, activeNoteId, notes, toast]);
+  }, [editorTitle, editorContent, activeNoteId, notes, toast]);
 
   const handleSelectNote = useCallback((note: Note) => {
     if (isRecording || isTranscribing) {
@@ -257,6 +283,7 @@ export default function LinguaNotePage() {
       return;
     }
     setActiveNoteId(note.id);
+    setEditorTitle(note.title);
     setEditorContent(note.content);
     setStatusMessage(`Viewing note: "${note.title}"`);
   }, [isRecording, isTranscribing, toast]);
@@ -282,17 +309,14 @@ export default function LinguaNotePage() {
   }, [toast]);
   
   if (!isMounted) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background p-4 md:p-8">
-        <Loader2 className="h-16 w-16 animate-spin text-primary" />
-      </div>
-    );
+    return null; // or a loading spinner
   }
 
   if (!apiKey) {
     return <ApiKeyEntry onApiKeySubmit={handleApiKeySubmit} />;
   }
 
+  const isActionInProgress = isRecording || isTranscribing || isSuggestingTitle;
 
   return (
     <TooltipProvider>
@@ -326,7 +350,7 @@ export default function LinguaNotePage() {
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-                  <Select value={language} onValueChange={setLanguage} disabled={isRecording}>
+                  <Select value={language} onValueChange={setLanguage} disabled={isActionInProgress}>
                     <SelectTrigger className="w-full sm:w-[180px]">
                       <SelectValue placeholder="Select Language" />
                     </SelectTrigger>
@@ -358,7 +382,7 @@ export default function LinguaNotePage() {
                     ) : (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Button variant="secondary" size="icon" onClick={handleStartRecording} disabled={isTranscribing} aria-label="Start recording">
+                          <Button variant="secondary" size="icon" onClick={handleStartRecording} disabled={isActionInProgress} aria-label="Start recording">
                             <Mic />
                           </Button>
                         </TooltipTrigger>
@@ -367,10 +391,10 @@ export default function LinguaNotePage() {
                     )}
                     <Tooltip>
                        <TooltipTrigger asChild>
-                          <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isTranscribing || isRecording}>
-                             <label htmlFor="file-upload">
+                          <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isActionInProgress}>
+                             <label htmlFor="file-upload" className={isActionInProgress ? 'cursor-not-allowed' : 'cursor-pointer'}>
                               {isTranscribing ? <Loader2 className="animate-spin"/> : <Upload />}
-                              <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isTranscribing || isRecording}/>
+                              <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isActionInProgress}/>
                              </label>
                           </Button>
                        </TooltipTrigger>
@@ -381,19 +405,40 @@ export default function LinguaNotePage() {
               </CardContent>
             </Card>
 
+            <div className="relative">
+              <Input
+                type="text"
+                placeholder="Enter note title here..."
+                className="text-lg font-semibold pr-12"
+                value={editorTitle}
+                onChange={(e) => setEditorTitle(e.target.value)}
+                disabled={isActionInProgress}
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground" onClick={handleSuggestTitle} disabled={isActionInProgress || !editorContent}>
+                    {isSuggestingTitle ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Suggest Title (AI)</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+
             <Textarea
               placeholder="Your transcript will appear here. You can also type directly."
-              className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-lg"
+              className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50"
               value={editorContent}
               onChange={(e) => setEditorContent(e.target.value)}
-              disabled={isTranscribing || isRecording}
+              disabled={isActionInProgress}
             />
             <div className="flex justify-end gap-2">
-               <Button variant="outline" onClick={handleNewNote} disabled={isTranscribing || isRecording}>
+               <Button variant="outline" onClick={handleNewNote} disabled={isActionInProgress}>
                   <FilePlus className="mr-2 h-4 w-4" />
                   New Note
                </Button>
-               <Button onClick={handleSaveNote} className="bg-accent hover:bg-accent/90" disabled={isTranscribing || isRecording}>
+               <Button onClick={handleSaveNote} className="bg-accent hover:bg-accent/90" disabled={isActionInProgress}>
                   <Save className="mr-2 h-4 w-4" />
                   {activeNoteId ? 'Update Note' : 'Save Note'}
                </Button>

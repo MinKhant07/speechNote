@@ -17,12 +17,12 @@ const TranscribeAudioInputSchema = z.object({
     ),
   apiKey: z.string().describe('A Google AI API key.'),
 });
-export type TranscribeAudioInput = z.infer<typeof TranscribeAudioInputSchema>;
+type TranscribeAudioInput = z.infer<typeof TranscribeAudioInputSchema>;
 
 const TranscribeAudioOutputSchema = z.object({
   transcript: z.string().describe('The transcribed text from the audio.'),
 });
-export type TranscribeAudioOutput = z.infer<typeof TranscribeAudioOutputSchema>;
+type TranscribeAudioOutput = z.infer<typeof TranscribeAudioOutputSchema>;
 
 export async function transcribeAudio(
   input: TranscribeAudioInput
