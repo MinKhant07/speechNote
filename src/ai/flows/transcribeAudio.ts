@@ -8,14 +8,16 @@
  */
 
 import { ai } from '@/ai/genkit';
+import { googleAI } from '@genkit-ai/googleai';
 import { z } from 'genkit';
 
 const TranscribeAudioInputSchema = z.object({
-    audioDataUri: z
+  audioDataUri: z
     .string()
     .describe(
       "An audio file, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
     ),
+  apiKey: z.string().optional().describe('An optional Google AI API key.'),
 });
 export type TranscribeAudioInput = z.infer<typeof TranscribeAudioInputSchema>;
 
@@ -24,16 +26,14 @@ const TranscribeAudioOutputSchema = z.object({
 });
 export type TranscribeAudioOutput = z.infer<typeof TranscribeAudioOutputSchema>;
 
-
 const transcriptionPrompt = ai.definePrompt({
-    name: 'transcriptionPrompt',
-    input: { schema: TranscribeAudioInputSchema },
-    output: { schema: TranscribeAudioOutputSchema },
-    prompt: `Transcribe the following audio recording.
+  name: 'transcriptionPrompt',
+  // Note: We don't specify input/output schema here because we will dynamically
+  // provide the model based on whether a user API key is present.
+  prompt: `Transcribe the following audio recording.
   
   Audio: {{media url=audioDataUri}}`,
 });
-  
 
 const transcribeAudioFlow = ai.defineFlow(
   {
@@ -42,13 +42,35 @@ const transcribeAudioFlow = ai.defineFlow(
     outputSchema: TranscribeAudioOutputSchema,
   },
   async (input) => {
-    const { output } = await transcriptionPrompt(input);
-    return output!;
+    let model = ai.getModel('googleai/gemini-2.0-flash');
+
+    if (input.apiKey) {
+      // If a user-provided API key exists, initialize a new Google AI plugin
+      // instance with that key and get the model from it.
+      const userGoogleAI = googleAI({ apiKey: input.apiKey });
+      model = genkit({ plugins: [userGoogleAI] }).getModel(
+        'googleai/gemini-2.0-flash'
+      );
+    } else {
+        // For self-hosted deployments, you might have a default key set up.
+        // If no key is available at all, this will fail.
+        // For this app, the frontend ensures a key is always provided.
+    }
+
+    const { output } = await transcriptionPrompt(
+      { audioDataUri: input.audioDataUri },
+      { model }
+    );
+    
+    return {
+      transcript: output()?.transcript ?? '',
+    };
   }
 );
 
 export async function transcribeAudio(input: TranscribeAudioInput): Promise<TranscribeAudioOutput> {
-    return await transcribeAudioFlow(input);
+  if (!input.apiKey) {
+    throw new Error('API key is required for transcription.');
+  }
+  return await transcribeAudioFlow(input);
 }
-
-    

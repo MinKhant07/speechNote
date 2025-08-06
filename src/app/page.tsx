@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2 } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -37,6 +38,7 @@ export default function LinguaNotePage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Welcome! Your notes are saved in this browser.');
   const [isMounted, setIsMounted] = useState(false);
+  const [apiKey, setApiKey] = useState('');
   
   const recognitionRef = useRef<any>(null);
   const editorContentRef = useRef('');
@@ -52,9 +54,13 @@ export default function LinguaNotePage() {
       if (savedNotes) {
         setNotes(JSON.parse(savedNotes));
       }
+      const savedApiKey = localStorage.getItem('geminiApiKey');
+      if (savedApiKey) {
+        setApiKey(savedApiKey);
+      }
     } catch (error) {
-      console.error("Failed to load notes from localStorage", error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load saved notes.' });
+      console.error("Failed to load data from localStorage", error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load saved data.' });
     }
 
     if (SpeechRecognition) {
@@ -96,6 +102,17 @@ export default function LinguaNotePage() {
     }
   }, [notes, isMounted, toast]);
 
+  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newApiKey = e.target.value;
+    setApiKey(newApiKey);
+    try {
+      localStorage.setItem('geminiApiKey', newApiKey);
+    } catch (error) {
+      console.error("Failed to save API key to localStorage", error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not save your API key.' });
+    }
+  };
+
   const handleStartRecording = useCallback(() => {
     const recognition = recognitionRef.current;
     if (isRecording || !recognition) return;
@@ -119,6 +136,11 @@ export default function LinguaNotePage() {
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (!apiKey) {
+        toast({ variant: 'destructive', title: 'API Key Required', description: 'Please enter your Google AI API key to transcribe audio files.' });
+        return;
+    }
   
     if (!file.type.startsWith('audio/')) {
         toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please select an audio file.' });
@@ -134,14 +156,15 @@ export default function LinguaNotePage() {
         const audioDataUri = reader.result as string;
         setStatusMessage(`Transcribing audio... This may take a moment.`);
         try {
-            const result = await transcribeAudio({ audioDataUri });
+            const result = await transcribeAudio({ audioDataUri, apiKey });
             setEditorContent(prev => prev + result.transcript + '\n');
             setStatusMessage('Transcription complete.');
             toast({ title: 'Success', description: 'Audio transcribed successfully.' });
         } catch (error) {
             console.error('Transcription error:', error);
+            const errorMessage = (error instanceof Error) ? error.message : 'An unknown error occurred.';
             setStatusMessage('Transcription failed. Please try again.');
-            toast({ variant: 'destructive', title: 'Transcription Error', description: 'Failed to transcribe the audio file.' });
+            toast({ variant: 'destructive', title: 'Transcription Error', description: `Failed to transcribe. Reason: ${errorMessage}` });
         } finally {
             setIsTranscribing(false);
             event.target.value = '';
@@ -153,7 +176,7 @@ export default function LinguaNotePage() {
         toast({ variant: 'destructive', title: 'File Error', description: 'Could not read the selected file.' });
         setIsTranscribing(false);
     };
-  }, [toast]);
+  }, [toast, apiKey]);
 
   const handleNewNote = useCallback(() => {
     if (isRecording) handleStopRecording();
@@ -254,57 +277,78 @@ export default function LinguaNotePage() {
                 <CardTitle className="font-headline">Create a New Note</CardTitle>
                 <CardDescription>{statusMessage}</CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-                <Select value={language} onValueChange={setLanguage} disabled={isRecording}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Select Language" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="en-US">English (US)</SelectItem>
-                    <SelectItem value="my-MM">Burmese (Myanmar)</SelectItem>
-                    <SelectItem value="th-TH">Thai</SelectItem>
-                  </SelectContent>
-                </Select>
-                <div className="flex gap-2 w-full sm:w-auto justify-end">
-                  {!SpeechRecognition ? (
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+                  <Select value={language} onValueChange={setLanguage} disabled={isRecording}>
+                    <SelectTrigger className="w-full sm:w-[180px]">
+                      <SelectValue placeholder="Select Language" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en-US">English (US)</SelectItem>
+                      <SelectItem value="my-MM">Burmese (Myanmar)</SelectItem>
+                      <SelectItem value="th-TH">Thai</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex gap-2 w-full sm:w-auto justify-end">
+                    {!SpeechRecognition ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                           <Button variant="destructive" disabled><AlertTriangle className="mr-2 h-4 w-4"/> Not Supported</Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Speech recognition is not supported in your browser.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : isRecording ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="destructive" size="icon" onClick={handleStopRecording} aria-label="Stop recording">
+                            <MicOff />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Stop recording</p></TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="secondary" size="icon" onClick={handleStartRecording} disabled={isTranscribing} aria-label="Start recording">
+                            <Mic />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Start recording</p></TooltipContent>
+                      </Tooltip>
+                    )}
                     <Tooltip>
-                      <TooltipTrigger asChild>
-                         <Button variant="destructive" disabled><AlertTriangle className="mr-2 h-4 w-4"/> Not Supported</Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Speech recognition is not supported in your browser.</p>
-                      </TooltipContent>
+                       <TooltipTrigger asChild>
+                          <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isTranscribing || isRecording || !apiKey}>
+                             <label htmlFor="file-upload">
+                              {isTranscribing ? <Loader2 className="animate-spin"/> : <Upload />}
+                              <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isTranscribing || isRecording || !apiKey}/>
+                             </label>
+                          </Button>
+                       </TooltipTrigger>
+                       <TooltipContent><p>{apiKey ? 'Upload Audio File' : 'Please enter API Key to upload'}</p></TooltipContent>
                     </Tooltip>
-                  ) : isRecording ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="destructive" size="icon" onClick={handleStopRecording} aria-label="Stop recording">
-                          <MicOff />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent><p>Stop recording</p></TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button variant="secondary" size="icon" onClick={handleStartRecording} disabled={isTranscribing} aria-label="Start recording">
-                          <Mic />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent><p>Start recording</p></TooltipContent>
-                    </Tooltip>
-                  )}
-                  <Tooltip>
-                     <TooltipTrigger asChild>
-                        <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isTranscribing || isRecording}>
-                           <label htmlFor="file-upload">
-                            {isTranscribing ? <Loader2 className="animate-spin"/> : <Upload />}
-                            <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isTranscribing || isRecording}/>
-                           </label>
-                        </Button>
-                     </TooltipTrigger>
-                     <TooltipContent><p>Upload Audio File</p></TooltipContent>
-                  </Tooltip>
+                  </div>
+                </div>
+                 <div className="flex flex-col gap-2">
+                    <label htmlFor="api-key" className="flex items-center text-sm font-medium text-muted-foreground">
+                        <KeyRound className="mr-2 h-4 w-4" />
+                        Google AI API Key
+                    </label>
+                    <Input 
+                        id="api-key"
+                        type="password"
+                        placeholder="Enter your Google AI API key"
+                        value={apiKey}
+                        onChange={handleApiKeyChange}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Your key is saved in your browser. Get your key from {' '}
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline text-primary">
+                           Google AI Studio
+                        </a>.
+                    </p>
                 </div>
               </CardContent>
             </Card>
@@ -399,5 +443,3 @@ export default function LinguaNotePage() {
     </TooltipProvider>
   );
 }
-
-    
