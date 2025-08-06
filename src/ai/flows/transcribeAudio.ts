@@ -7,8 +7,6 @@
  * - TranscribeAudioOutput - The return type for the transcribeAudio function.
  */
 
-import { ai } from '@/ai/genkit';
-import { googleAI } from '@genkit-ai/googleai';
 import { z } from 'genkit';
 
 const TranscribeAudioInputSchema = z.object({
@@ -17,7 +15,7 @@ const TranscribeAudioInputSchema = z.object({
     .describe(
       "An audio file, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'"
     ),
-  apiKey: z.string().optional().describe('An optional Google AI API key.'),
+  apiKey: z.string().describe('A Google AI API key.'),
 });
 export type TranscribeAudioInput = z.infer<typeof TranscribeAudioInputSchema>;
 
@@ -26,50 +24,64 @@ const TranscribeAudioOutputSchema = z.object({
 });
 export type TranscribeAudioOutput = z.infer<typeof TranscribeAudioOutputSchema>;
 
-const transcriptionPrompt = ai.definePrompt({
-  name: 'transcriptionPrompt',
-  input: { schema: z.object({ audioDataUri: z.string() }) },
-  output: { schema: TranscribeAudioOutputSchema },
-  prompt: `Transcribe the following audio recording.
-  
-  Audio: {{media url=audioDataUri}}`,
-});
-
-const transcribeAudioFlow = ai.defineFlow(
-  {
-    name: 'transcribeAudioFlow',
-    inputSchema: TranscribeAudioInputSchema,
-    outputSchema: TranscribeAudioOutputSchema,
-  },
-  async (input) => {
-    let model;
-
-    if (input.apiKey) {
-      // If a user-provided API key exists, initialize a new Google AI plugin
-      // instance with that key and get the model from it.
-      const userGoogleAI = googleAI({ apiKey: input.apiKey });
-      model = userGoogleAI.model('gemini-2.0-flash');
-    } else {
-        // For self-hosted deployments, you might have a default key set up.
-        // If no key is available at all, this will fail.
-        // For this app, the frontend ensures a key is always provided.
-        model = googleAI.model('gemini-2.0-flash');
-    }
-
-    const { output } = await transcriptionPrompt(
-      { audioDataUri: input.audioDataUri },
-      { model }
-    );
-    
-    return {
-      transcript: output?.transcript ?? '',
-    };
-  }
-);
-
-export async function transcribeAudio(input: TranscribeAudioInput): Promise<TranscribeAudioOutput> {
+export async function transcribeAudio(
+  input: TranscribeAudioInput
+): Promise<TranscribeAudioOutput> {
   if (!input.apiKey) {
     throw new Error('API key is required for transcription.');
   }
-  return await transcribeAudioFlow(input);
+
+  try {
+    const mimeType = input.audioDataUri.match(/data:(.*?);/)?.[1] ?? '';
+    const base64Data = input.audioDataUri.split(',')[1];
+
+    if (!mimeType || !base64Data) {
+      throw new Error('Invalid audio data URI format.');
+    }
+
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${input.apiKey}`;
+
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: 'Transcribe the following audio recording.',
+              },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: base64Data,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.json();
+        console.error('Google AI API Error:', errorBody);
+        const errorDetails = errorBody.error?.message || response.statusText;
+        throw new Error(`API request failed: ${errorDetails}`);
+    }
+
+    const responseData = await response.json();
+    const transcript = responseData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    return { transcript };
+
+  } catch (error) {
+    console.error('Transcription failed:', error);
+    if (error instanceof Error) {
+        throw error;
+    }
+    throw new Error('An unknown error occurred during transcription.');
+  }
 }
