@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles, Search } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles, Search, LayoutGrid, LayoutList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from "@/hooks/use-toast";
 import { transcribeAudio } from '@/ai/flows/transcribeAudio';
 import { suggestTitle } from '@/ai/flows/suggestTitle';
+import { cn } from '@/lib/utils';
 
 type Note = {
   id: string;
@@ -87,7 +88,8 @@ export default function LinguaNotePage() {
   const [isMounted, setIsMounted] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -254,6 +256,7 @@ export default function LinguaNotePage() {
     setEditorTitle('');
     setEditorContent('');
     setStatusMessage('Started a new note.');
+    setViewMode('list');
   }, [isRecording, handleStopRecording]);
 
   const handleSaveNote = useCallback(() => {
@@ -287,6 +290,7 @@ export default function LinguaNotePage() {
     setEditorTitle(note.title);
     setEditorContent(note.content);
     setStatusMessage(`Viewing note: "${note.title}"`);
+    setViewMode('list'); // Switch back to list view when a note is selected for editing
   }, [isRecording, isTranscribing, toast]);
 
   const handleDeleteNote = useCallback((e: React.MouseEvent, noteId: string) => {
@@ -326,6 +330,109 @@ export default function LinguaNotePage() {
   }
 
   const isActionInProgress = isRecording || isTranscribing || isSuggestingTitle;
+  
+  const NotesListView = (
+    <div className="p-4 space-y-2">
+      {notes.length > 0 && filteredNotes.length === 0 ? (
+        <div className="text-center text-muted-foreground py-10">
+          No notes found for "{searchQuery}".
+        </div>
+      ) : notes.length === 0 ? (
+        <div className="text-center text-muted-foreground py-10">No notes saved yet.</div>
+      ) : (
+        filteredNotes.map(note => (
+          <div
+            key={note.id}
+            onClick={() => handleSelectNote(note)}
+            className={`group p-3 rounded-lg border cursor-pointer transition-colors ${activeNoteId === note.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'}`}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="font-semibold truncate max-w-[200px]">{note.title}</h3>
+                <time dateTime={note.date} className="text-xs text-muted-foreground">
+                  {format(new Date(note.date), "PPP p")}
+                </time>
+              </div>
+              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:bg-primary/10 hover:text-primary shrink-0"
+                      onClick={(e) => handleCopyNote(e, note.content)}
+                      aria-label="Copy note"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Copy note</p></TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0"
+                      onClick={(e) => handleDeleteNote(e, note.id)}
+                      aria-label="Delete note"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Delete note</p></TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+  
+  const NotesGridView = (
+    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {notes.length > 0 && filteredNotes.length === 0 ? (
+        <div className="text-center text-muted-foreground py-10 col-span-full">
+          No notes found for "{searchQuery}".
+        </div>
+      ) : notes.length === 0 ? (
+        <div className="text-center text-muted-foreground py-10 col-span-full">No notes saved yet.</div>
+      ) : (
+        filteredNotes.map(note => (
+          <Card 
+            key={note.id} 
+            onClick={() => handleSelectNote(note)}
+            className="cursor-pointer hover:shadow-primary/20 hover:shadow-lg transition-shadow"
+          >
+            <CardHeader>
+              <CardTitle className="truncate font-headline text-lg">{note.title}</CardTitle>
+              <CardDescription>{format(new Date(note.date), "PPP p")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground line-clamp-4">{note.content}</p>
+            </CardContent>
+            <div className="flex justify-end p-4 pt-0">
+               <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0"
+                      onClick={(e) => handleDeleteNote(e, note.id)}
+                      aria-label="Delete note"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Delete note</p></TooltipContent>
+                </Tooltip>
+            </div>
+          </Card>
+        ))
+      )}
+    </div>
+  );
 
   return (
     <TooltipProvider>
@@ -351,115 +458,139 @@ export default function LinguaNotePage() {
 
         <main className="flex flex-col md:flex-row gap-6 p-4 md:p-6 max-w-7xl mx-auto">
           {/* Main Content */}
-          <div className="flex-grow md:w-2/3 flex flex-col gap-4">
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle className="font-headline">Create a New Note</CardTitle>
-                <CardDescription>{statusMessage}</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-                  <Select value={language} onValueChange={setLanguage} disabled={isActionInProgress}>
-                    <SelectTrigger className="w-full sm:w-[180px]">
-                      <SelectValue placeholder="Select Language" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="en-US">English (US)</SelectItem>
-                      <SelectItem value="my-MM">Burmese (Myanmar)</SelectItem>
-                      <SelectItem value="th-TH">Thai</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <div className="flex gap-2 w-full sm:w-auto justify-end">
-                    {!SpeechRecognition ? (
+          {viewMode === 'list' && (
+            <div className="flex-grow md:w-2/3 flex flex-col gap-4">
+              <Card className="shadow-lg">
+                <CardHeader>
+                  <CardTitle className="font-headline">Create a New Note</CardTitle>
+                  <CardDescription>{statusMessage}</CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+                    <Select value={language} onValueChange={setLanguage} disabled={isActionInProgress}>
+                      <SelectTrigger className="w-full sm:w-[180px]">
+                        <SelectValue placeholder="Select Language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en-US">English (US)</SelectItem>
+                        <SelectItem value="my-MM">Burmese (Myanmar)</SelectItem>
+                        <SelectItem value="th-TH">Thai</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="flex gap-2 w-full sm:w-auto justify-end">
+                      {!SpeechRecognition ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="destructive" disabled><AlertTriangle className="mr-2 h-4 w-4"/> Not Supported</Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Speech recognition is not supported in your browser.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : isRecording ? (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="destructive" size="icon" onClick={handleStopRecording} aria-label="Stop recording">
+                              <MicOff />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent><p>Stop recording</p></TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="secondary" size="icon" onClick={handleStartRecording} disabled={isActionInProgress} aria-label="Start recording">
+                              <Mic />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent><p>Start recording</p></TooltipContent>
+                        </Tooltip>
+                      )}
                       <Tooltip>
                         <TooltipTrigger asChild>
-                           <Button variant="destructive" disabled><AlertTriangle className="mr-2 h-4 w-4"/> Not Supported</Button>
+                            <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isActionInProgress}>
+                              <label htmlFor="file-upload" className={isActionInProgress ? 'cursor-not-allowed' : 'cursor-pointer'}>
+                                {isTranscribing ? <Loader2 className="animate-spin"/> : <Upload />}
+                                <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isActionInProgress}/>
+                              </label>
+                            </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Speech recognition is not supported in your browser.</p>
-                        </TooltipContent>
+                        <TooltipContent><p>Upload Audio File</p></TooltipContent>
                       </Tooltip>
-                    ) : isRecording ? (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="destructive" size="icon" onClick={handleStopRecording} aria-label="Stop recording">
-                            <MicOff />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Stop recording</p></TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="secondary" size="icon" onClick={handleStartRecording} disabled={isActionInProgress} aria-label="Start recording">
-                            <Mic />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Start recording</p></TooltipContent>
-                      </Tooltip>
-                    )}
-                    <Tooltip>
-                       <TooltipTrigger asChild>
-                          <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isActionInProgress}>
-                             <label htmlFor="file-upload" className={isActionInProgress ? 'cursor-not-allowed' : 'cursor-pointer'}>
-                              {isTranscribing ? <Loader2 className="animate-spin"/> : <Upload />}
-                              <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isActionInProgress}/>
-                             </label>
-                          </Button>
-                       </TooltipTrigger>
-                       <TooltipContent><p>Upload Audio File</p></TooltipContent>
-                    </Tooltip>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <div className="relative">
-              <Input
-                type="text"
-                placeholder="Enter note title here..."
-                className="text-lg font-semibold pr-12"
-                value={editorTitle}
-                onChange={(e) => setEditorTitle(e.target.value)}
+              <div className="relative">
+                <Input
+                  type="text"
+                  placeholder="Enter note title here..."
+                  className="text-lg font-semibold pr-12"
+                  value={editorTitle}
+                  onChange={(e) => setEditorTitle(e.target.value)}
+                  disabled={isActionInProgress}
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground" onClick={handleSuggestTitle} disabled={isActionInProgress || !editorContent}>
+                      {isSuggestingTitle ? <Loader2 className="animate-spin" /> : <Sparkles />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Suggest Title (AI)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+
+              <Textarea
+                placeholder="Your transcript will appear here. You can also type directly."
+                className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50"
+                value={editorContent}
+                onChange={(e) => setEditorContent(e.target.value)}
                 disabled={isActionInProgress}
               />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground" onClick={handleSuggestTitle} disabled={isActionInProgress || !editorContent}>
-                    {isSuggestingTitle ? <Loader2 className="animate-spin" /> : <Sparkles />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Suggest Title (AI)</p>
-                </TooltipContent>
-              </Tooltip>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={handleNewNote} disabled={isActionInProgress}>
+                    <FilePlus className="mr-2 h-4 w-4" />
+                    New Note
+                </Button>
+                <Button onClick={handleSaveNote} className="bg-accent hover:bg-accent/90" disabled={isActionInProgress}>
+                    <Save className="mr-2 h-4 w-4" />
+                    {activeNoteId ? 'Update Note' : 'Save Note'}
+                </Button>
+              </div>
             </div>
-
-            <Textarea
-              placeholder="Your transcript will appear here. You can also type directly."
-              className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50"
-              value={editorContent}
-              onChange={(e) => setEditorContent(e.target.value)}
-              disabled={isActionInProgress}
-            />
-            <div className="flex justify-end gap-2">
-               <Button variant="outline" onClick={handleNewNote} disabled={isActionInProgress}>
-                  <FilePlus className="mr-2 h-4 w-4" />
-                  New Note
-               </Button>
-               <Button onClick={handleSaveNote} className="bg-accent hover:bg-accent/90" disabled={isActionInProgress}>
-                  <Save className="mr-2 h-4 w-4" />
-                  {activeNoteId ? 'Update Note' : 'Save Note'}
-               </Button>
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="md:w-1/3 flex flex-col">
+          )}
+          
+          {/* Sidebar/Notes List */}
+          <div className={cn("flex flex-col", viewMode === 'list' ? 'md:w-1/3' : 'w-full')}>
             <Card className="flex-grow flex flex-col shadow-lg">
               <CardHeader>
-                <CardTitle className="font-headline">My Saved Notes</CardTitle>
-                <CardDescription>You have {notes.length} notes. Notes are saved in your browser.</CardDescription>
+                <div className="flex justify-between items-center">
+                   <div>
+                     <CardTitle className="font-headline">My Saved Notes</CardTitle>
+                     <CardDescription>You have {notes.length} notes. Notes are saved in your browser.</CardDescription>
+                   </div>
+                   <div className="flex items-center gap-1">
+                      <Tooltip>
+                          <TooltipTrigger asChild>
+                              <Button variant={viewMode === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('list')}>
+                                  <LayoutList className="h-4 w-4" />
+                              </Button>
+                          </TooltipTrigger>
+                          <TooltipContent><p>List View</p></TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                          <TooltipTrigger asChild>
+                              <Button variant={viewMode === 'grid' ? 'secondary' : 'ghost'} size="icon" onClick={() => setViewMode('grid')}>
+                                  <LayoutGrid className="h-4 w-4" />
+                              </Button>
+                          </TooltipTrigger>
+                          <TooltipContent><p>Grid View</p></TooltipContent>
+                      </Tooltip>
+                   </div>
+                </div>
               </CardHeader>
               <div className="px-4 pb-2">
                 <div className="relative">
@@ -474,63 +605,8 @@ export default function LinguaNotePage() {
               </div>
               <Separator />
               <CardContent className="p-0 flex-grow">
-                <ScrollArea className="h-[500px]">
-                  <div className="p-4 space-y-2">
-                    {notes.length > 0 && filteredNotes.length === 0 ? (
-                      <div className="text-center text-muted-foreground py-10">
-                        No notes found for "{searchQuery}".
-                      </div>
-                    ) : notes.length === 0 ? (
-                      <div className="text-center text-muted-foreground py-10">No notes saved yet.</div>
-                    ) : (
-                      filteredNotes.map(note => (
-                        <div
-                          key={note.id}
-                          onClick={() => handleSelectNote(note)}
-                          className={`group p-3 rounded-lg border cursor-pointer transition-colors ${activeNoteId === note.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'}`}
-                        >
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h3 className="font-semibold truncate max-w-[200px]">{note.title}</h3>
-                              <time dateTime={note.date} className="text-xs text-muted-foreground">
-                                {format(new Date(note.date), "PPP p")}
-                              </time>
-                            </div>
-                            <div className="flex items-center opacity-50 group-hover:opacity-100 transition-opacity">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:bg-primary/10 hover:text-primary shrink-0"
-                                    onClick={(e) => handleCopyNote(e, note.content)}
-                                    aria-label="Copy note"
-                                  >
-                                    <Copy className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent><p>Copy note</p></TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0"
-                                    onClick={(e) => handleDeleteNote(e, note.id)}
-                                    aria-label="Delete note"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent><p>Delete note</p></TooltipContent>
-                              </Tooltip>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                <ScrollArea className={viewMode === 'grid' ? "h-[calc(100vh-280px)]" : "h-[500px]"}>
+                  {viewMode === 'list' ? NotesListView : NotesGridView}
                 </ScrollArea>
               </CardContent>
             </Card>
