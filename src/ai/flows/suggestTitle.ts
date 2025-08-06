@@ -38,7 +38,7 @@ export async function suggestTitle(input: SuggestTitleInput): Promise<SuggestTit
           {
             parts: [
               {
-                text: `Based on the following note content, suggest a short, concise title (5-10 words maximum). Content: "${input.content}"`,
+                text: `Based on the following note content, suggest one single, short, and concise title. The title should be 5-10 words maximum. IMPORTANT: Do not add any introductory text, explanations, or bullet points. Only return the title text itself. Content: "${input.content}"`,
               },
             ],
           },
@@ -56,8 +56,14 @@ export async function suggestTitle(input: SuggestTitleInput): Promise<SuggestTit
     const responseData = await response.json();
     let title = responseData.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
-    // Clean up the title (remove quotes, etc.)
-    title = title.replace(/^"|"$/g, '').trim();
+    // Clean up the title to remove any introductory phrases, bullet points, or quotes.
+    // This makes the output more reliable.
+    title = title
+      .split('\n') // Split by new lines in case it returns a list
+      .map(line => line.trim()) // Trim whitespace from each line
+      .filter(line => !!line) // Remove empty lines
+      .map(line => line.replace(/^[\*\-\s"']+|[\s"']+$/g, '')) // Remove leading/trailing junk
+      .pop() || title; // Take the last plausible line as the title
 
     return { title };
 
