@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -336,19 +336,30 @@ export default function LinguaNotePage() {
                         <KeyRound className="mr-2 h-4 w-4" />
                         Google AI API Key
                     </label>
-                    <Input 
-                        id="api-key"
-                        type="password"
-                        placeholder="Enter your Google AI API key"
-                        value={apiKey}
-                        onChange={handleApiKeyChange}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        Your key is saved in your browser. Get your key from {' '}
-                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline text-primary">
-                           Google AI Studio
-                        </a>.
-                    </p>
+                    {apiKey ? (
+                       <div className="flex items-center gap-2">
+                          <Input value="••••••••••••••••••••••••" readOnly disabled className="font-mono"/>
+                          <Button variant="secondary" onClick={() => setApiKey('')}>
+                             <Pencil className="mr-2 h-4 w-4" /> Change Key
+                          </Button>
+                       </div>
+                    ) : (
+                       <>
+                         <Input 
+                             id="api-key"
+                             type="password"
+                             placeholder="Enter your Google AI API key"
+                             value={apiKey}
+                             onChange={handleApiKeyChange}
+                         />
+                         <p className="text-xs text-muted-foreground">
+                             Your key is saved in your browser. Get your key from {' '}
+                             <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline text-primary">
+                                Google AI Studio
+                             </a>.
+                         </p>
+                       </>
+                    )}
                 </div>
               </CardContent>
             </Card>
