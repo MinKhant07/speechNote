@@ -236,7 +236,7 @@ export default function LinguaNotePage() {
     setIsSuggestingTitle(true);
     setStatusMessage('Generating a title for your note...');
     try {
-      const result = await suggestTitle({ content: editorContent, apiKey });
+      const result = await suggestTitle({ content: editorContent, language, apiKey });
       setEditorTitle(result.title);
       setStatusMessage('Title suggestion complete.');
       toast({ title: 'Title Suggested!', description: 'A new title has been generated.' });
@@ -248,7 +248,7 @@ export default function LinguaNotePage() {
     } finally {
       setIsSuggestingTitle(false);
     }
-  }, [editorContent, apiKey, toast]);
+  }, [editorContent, language, apiKey, toast]);
 
   const handleNewNote = useCallback(() => {
     if (isRecording) handleStopRecording();

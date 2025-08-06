@@ -10,6 +10,7 @@ import { z } from 'genkit';
 
 const SuggestTitleInputSchema = z.object({
   content: z.string().describe('The content of the note.'),
+  language: z.string().describe('The language of the content, e.g., "en-US", "my-MM".'),
   apiKey: z.string().describe('A Google AI API key.'),
 });
 type SuggestTitleInput = z.infer<typeof SuggestTitleInputSchema>;
@@ -38,7 +39,7 @@ export async function suggestTitle(input: SuggestTitleInput): Promise<SuggestTit
           {
             parts: [
               {
-                text: `Based on the following note content, suggest one single, short, and concise title. The title should be 5-10 words maximum. IMPORTANT: Do not add any introductory text, explanations, or bullet points. Only return the title text itself. Content: "${input.content}"`,
+                text: `Based on the following note content, suggest one single, short, and concise title in the same language as the content (${input.language}). The title should be 5-10 words maximum. IMPORTANT: Do not add any introductory text, explanations, or bullet points. Only return the title text itself. Content: "${input.content}"`,
               },
             ],
           },
