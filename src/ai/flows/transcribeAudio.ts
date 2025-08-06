@@ -42,17 +42,18 @@ const transcribeAudioFlow = ai.defineFlow(
     outputSchema: TranscribeAudioOutputSchema,
   },
   async (input) => {
-    let model = googleAI.model('gemini-2.0-flash');
+    let model;
 
     if (input.apiKey) {
       // If a user-provided API key exists, initialize a new Google AI plugin
       // instance with that key and get the model from it.
-      const userGoogleAI = new (googleAI as any).constructor({ apiKey: input.apiKey });
+      const userGoogleAI = googleAI({ apiKey: input.apiKey });
       model = userGoogleAI.model('gemini-2.0-flash');
     } else {
         // For self-hosted deployments, you might have a default key set up.
         // If no key is available at all, this will fail.
         // For this app, the frontend ensures a key is always provided.
+        model = googleAI.model('gemini-2.0-flash');
     }
 
     const { output } = await transcriptionPrompt(
