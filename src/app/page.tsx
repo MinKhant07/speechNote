@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -86,6 +86,7 @@ export default function LinguaNotePage() {
   const [statusMessage, setStatusMessage] = useState('Welcome! Your notes are saved in this browser.');
   const [isMounted, setIsMounted] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const recognitionRef = useRef<any>(null);
 
@@ -307,6 +308,14 @@ export default function LinguaNotePage() {
     navigator.clipboard.writeText(content);
     toast({ title: 'Copied!', description: 'Note content copied to clipboard.' });
   }, [toast]);
+
+  const filteredNotes = useMemo(() => {
+    if (!searchQuery) return notes;
+    return notes.filter(note => 
+      note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.content.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [notes, searchQuery]);
   
   if (!isMounted) {
     return null; // or a loading spinner
@@ -452,14 +461,29 @@ export default function LinguaNotePage() {
                 <CardTitle className="font-headline">My Saved Notes</CardTitle>
                 <CardDescription>You have {notes.length} notes. Notes are saved in your browser.</CardDescription>
               </CardHeader>
+              <div className="px-4 pb-2">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                        placeholder="Search notes..." 
+                        className="pl-10"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+              </div>
               <Separator />
               <CardContent className="p-0 flex-grow">
-                <ScrollArea className="h-[550px]">
+                <ScrollArea className="h-[500px]">
                   <div className="p-4 space-y-2">
-                    {notes.length === 0 ? (
+                    {notes.length > 0 && filteredNotes.length === 0 ? (
+                      <div className="text-center text-muted-foreground py-10">
+                        No notes found for "{searchQuery}".
+                      </div>
+                    ) : notes.length === 0 ? (
                       <div className="text-center text-muted-foreground py-10">No notes saved yet.</div>
                     ) : (
-                      notes.map(note => (
+                      filteredNotes.map(note => (
                         <div
                           key={note.id}
                           onClick={() => handleSelectNote(note)}
