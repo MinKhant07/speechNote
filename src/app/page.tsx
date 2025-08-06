@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from "@/hooks/use-toast";
+import { transcribeAudio } from '@/ai/flows/transcribeAudio';
 
 type Note = {
   id: string;
@@ -33,6 +34,7 @@ export default function LinguaNotePage() {
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [editorContent, setEditorContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Welcome! Your notes are saved in this browser.');
   const [isMounted, setIsMounted] = useState(false);
   
@@ -117,22 +119,40 @@ export default function LinguaNotePage() {
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    if (file.type !== 'audio/mpeg') {
-      toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please select an .mp3 file.' });
-      return;
+  
+    if (!file.type.startsWith('audio/')) {
+        toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please select an audio file.' });
+        return;
     }
-    
+  
+    setIsTranscribing(true);
     setStatusMessage(`Uploading "${file.name}"...`);
-    await new Promise(res => setTimeout(res, 1500));
-    setStatusMessage(`Transcribing audio... (This is a demo and not a real transcription)`);
-    await new Promise(res => setTimeout(res, 2000));
-
-    const dummyText = `\n(Dummy transcription for ${file.name}. Real transcription requires server-side logic.)\n`;
-    setEditorContent(prev => prev + dummyText);
-    setStatusMessage(`Demo transcription for "${file.name}" complete.`);
-    event.target.value = '';
-    toast({ title: 'Success', description: 'Demo transcription complete.' });
+  
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+        const audioDataUri = reader.result as string;
+        setStatusMessage(`Transcribing audio... This may take a moment.`);
+        try {
+            const result = await transcribeAudio({ audioDataUri });
+            setEditorContent(prev => prev + result.transcript + '\n');
+            setStatusMessage('Transcription complete.');
+            toast({ title: 'Success', description: 'Audio transcribed successfully.' });
+        } catch (error) {
+            console.error('Transcription error:', error);
+            setStatusMessage('Transcription failed. Please try again.');
+            toast({ variant: 'destructive', title: 'Transcription Error', description: 'Failed to transcribe the audio file.' });
+        } finally {
+            setIsTranscribing(false);
+            event.target.value = '';
+        }
+    };
+    reader.onerror = (error) => {
+        console.error('File reader error:', error);
+        setStatusMessage('Failed to read file.');
+        toast({ variant: 'destructive', title: 'File Error', description: 'Could not read the selected file.' });
+        setIsTranscribing(false);
+    };
   }, [toast]);
 
   const handleNewNote = useCallback(() => {
@@ -165,19 +185,19 @@ export default function LinguaNotePage() {
   }, [editorContent, activeNoteId, notes, toast]);
 
   const handleSelectNote = useCallback((note: Note) => {
-    if (isRecording) {
-      toast({ variant: 'destructive', title: 'Action Denied', description: 'Stop recording before switching notes.' });
+    if (isRecording || isTranscribing) {
+      toast({ variant: 'destructive', title: 'Action Denied', description: 'Please wait for the current action to finish before switching notes.' });
       return;
     }
     setActiveNoteId(note.id);
     setEditorContent(note.content);
     setStatusMessage(`Viewing note: "${note.title}"`);
-  }, [isRecording, toast]);
+  }, [isRecording, isTranscribing, toast]);
 
   const handleDeleteNote = useCallback((e: React.MouseEvent, noteId: string) => {
     e.stopPropagation();
-    if (isRecording) {
-      toast({ variant: 'destructive', title: 'Action Denied', description: 'Stop recording before deleting a note.' });
+    if (isRecording || isTranscribing) {
+      toast({ variant: 'destructive', title: 'Action Denied', description: 'Please wait for the current action to finish before deleting a note.' });
       return;
     }
     const deletedNote = notes.find(n => n.id === noteId);
@@ -186,7 +206,7 @@ export default function LinguaNotePage() {
       handleNewNote();
     }
     toast({ title: 'Note Deleted', description: `"${deletedNote?.title}" has been deleted.` });
-  }, [isRecording, notes, activeNoteId, toast, handleNewNote]);
+  }, [isRecording, isTranscribing, notes, activeNoteId, toast, handleNewNote]);
 
   const handleCopyNote = useCallback((e: React.MouseEvent, content: string) => {
     e.stopPropagation();
@@ -235,7 +255,7 @@ export default function LinguaNotePage() {
                 <CardDescription>{statusMessage}</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-                <Select value={language} onValueChange={setLanguage}>
+                <Select value={language} onValueChange={setLanguage} disabled={isRecording}>
                   <SelectTrigger className="w-full sm:w-[180px]">
                     <SelectValue placeholder="Select Language" />
                   </SelectTrigger>
@@ -267,7 +287,7 @@ export default function LinguaNotePage() {
                   ) : (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button variant="secondary" size="icon" onClick={handleStartRecording} aria-label="Start recording">
+                        <Button variant="secondary" size="icon" onClick={handleStartRecording} disabled={isTranscribing} aria-label="Start recording">
                           <Mic />
                         </Button>
                       </TooltipTrigger>
@@ -276,11 +296,14 @@ export default function LinguaNotePage() {
                   )}
                   <Tooltip>
                      <TooltipTrigger asChild>
-                        <Button variant="secondary" size="icon" asChild aria-label="Upload MP3 file">
-                           <label htmlFor="file-upload"><Upload /><input id="file-upload" type="file" className="hidden" accept=".mp3" onChange={handleFileUpload} /></label>
+                        <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isTranscribing || isRecording}>
+                           <label htmlFor="file-upload">
+                            {isTranscribing ? <Loader2 className="animate-spin"/> : <Upload />}
+                            <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isTranscribing || isRecording}/>
+                           </label>
                         </Button>
                      </TooltipTrigger>
-                     <TooltipContent><p>Upload MP3 (Demo)</p></TooltipContent>
+                     <TooltipContent><p>Upload Audio File</p></TooltipContent>
                   </Tooltip>
                 </div>
               </CardContent>
@@ -291,13 +314,14 @@ export default function LinguaNotePage() {
               className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-lg"
               value={editorContent}
               onChange={(e) => setEditorContent(e.target.value)}
+              disabled={isTranscribing || isRecording}
             />
             <div className="flex justify-end gap-2">
-               <Button variant="outline" onClick={handleNewNote}>
+               <Button variant="outline" onClick={handleNewNote} disabled={isTranscribing || isRecording}>
                   <FilePlus className="mr-2 h-4 w-4" />
                   New Note
                </Button>
-               <Button onClick={handleSaveNote} className="bg-accent hover:bg-accent/90">
+               <Button onClick={handleSaveNote} className="bg-accent hover:bg-accent/90" disabled={isTranscribing || isRecording}>
                   <Save className="mr-2 h-4 w-4" />
                   {activeNoteId ? 'Update Note' : 'Save Note'}
                </Button>
@@ -309,7 +333,7 @@ export default function LinguaNotePage() {
             <Card className="flex-grow flex flex-col shadow-lg">
               <CardHeader>
                 <CardTitle className="font-headline">My Saved Notes</CardTitle>
-                <CardDescription>You have {notes.length} notes.</CardDescription>
+                <CardDescription>You have {notes.length} notes. Notes are saved in your browser.</CardDescription>
               </CardHeader>
               <Separator />
               <CardContent className="p-0 flex-grow">
@@ -375,3 +399,5 @@ export default function LinguaNotePage() {
     </TooltipProvider>
   );
 }
+
+    
