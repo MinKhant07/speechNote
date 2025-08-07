@@ -201,7 +201,6 @@ export default function LinguaNotePage() {
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
-    recognitionRef.current.onstart = () => setIsRecording(true);
     recognitionRef.current.onend = () => setIsRecording(false);
     recognitionRef.current.onerror = (event: any) => {
       if (event.error === 'aborted' || event.error === 'no-speech') return;
@@ -295,6 +294,7 @@ export default function LinguaNotePage() {
     try {
       recognitionRef.current.lang = language;
       recognitionRef.current.start();
+      setIsRecording(true); // This is the fix
       setStatusMessage('Listening for dictation...');
     } catch (e) {
       console.error("Could not start recording", e);
@@ -306,6 +306,7 @@ export default function LinguaNotePage() {
   const handleStopRecording = useCallback(() => {
     if (!isRecording || !recognitionRef.current) return;
     recognitionRef.current.stop();
+    setIsRecording(false);
     setStatusMessage('Recording stopped.');
   }, [isRecording]);
 
