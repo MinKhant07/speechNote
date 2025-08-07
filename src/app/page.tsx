@@ -48,7 +48,7 @@ function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void
             Enter Your Google AI API Key
           </CardTitle>
           <CardDescription>
-            To use LinguaNote, please provide your Google AI API key. Your key will be saved securely in your browser.
+            To use SpeechNoteMm, please provide your Google AI API key. Your key will be saved securely in your browser.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -61,7 +61,7 @@ function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void
             className="text-base"
           />
           <Button onClick={handleSubmit} className="w-full" style={{backgroundColor: '#FF9800'}}>
-            Start Using LinguaNote
+            Start Using SpeechNoteMm
           </Button>
           <p className="text-xs text-center text-muted-foreground pt-2">
             Get your key from{' '}
@@ -76,7 +76,7 @@ function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void
 }
 
 
-export default function LinguaNotePage() {
+export default function SpeechNoteMmPage() {
   const { toast } = useToast();
   const [language, setLanguage] = useState<Language>('en-US');
   const [notes, setNotes] = useState<Note[]>([]);
@@ -463,7 +463,7 @@ export default function LinguaNotePage() {
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
              <div className="flex items-center gap-3">
                 <AudioLines className="h-8 w-8 text-primary" />
-                <h1 className="text-2xl font-bold font-headline text-primary">LinguaNote</h1>
+                <h1 className="text-2xl font-bold font-headline text-primary">SpeechNoteMm</h1>
              </div>
              <Tooltip>
                 <TooltipTrigger asChild>
