@@ -272,9 +272,9 @@ export default function SpeechNoteMmPage() {
   const handleStartRecording = useCallback(() => {
     if (isRecording || !recognitionRef.current) return;
     try {
-      setIsRecording(true);
       recognitionRef.current.lang = language;
       recognitionRef.current.start();
+      setIsRecording(true);
     } catch (e) {
       setIsRecording(false);
       console.error("Could not start recording", e);
@@ -378,6 +378,12 @@ export default function SpeechNoteMmPage() {
     );
     setCurrentWordIndex(activeWord);
   }, [activeNoteWords]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = 1.0;
+    }
+  }, [activeNoteAudioUri]);
 
   const filteredNotes = useMemo(() => {
     if (!searchQuery) return notes;
