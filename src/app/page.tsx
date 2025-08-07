@@ -28,14 +28,6 @@ if (typeof window !== 'undefined') {
   SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
 }
 
-// Voice Command Keywords
-const COMMANDS = {
-  SAVE_NOTE: { 'en-US': 'save note', 'my-MM': 'မှတ်စုသိမ်း', 'th-TH': 'บันทึกโน้ต' },
-  SUGGEST_TITLE: { 'en-US': 'suggest title', 'my-MM': 'ခေါင်းစဉ်အကြံပြု', 'th-TH': 'แนะนำชื่อเรื่อง' },
-  NEW_NOTE: { 'en-US': 'new note', 'my-MM': 'မှတ်စုအသစ်', 'th-TH': 'โน้ตใหม่' },
-  CLEAR_EDITOR: { 'en-US': 'clear editor', 'my-MM': 'အားလုံးဖျက်', 'th-TH': 'ล้าง' },
-};
-
 type Language = 'en-US' | 'my-MM' | 'th-TH';
 
 function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void }) {
@@ -92,7 +84,6 @@ export default function LinguaNotePage() {
   const [editorTitle, setEditorTitle] = useState('');
   const [editorContent, setEditorContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
-  const [isListeningForCommand, setIsListeningForCommand] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSuggestingTitle, setIsSuggestingTitle] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Welcome! Your notes are saved in this browser.');
@@ -102,7 +93,6 @@ export default function LinguaNotePage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   const recognitionRef = useRef<any>(null);
-  const commandRecognitionRef = useRef<any>(null);
 
 
   const handleSaveNote = useCallback(() => {
@@ -166,48 +156,36 @@ export default function LinguaNotePage() {
     setEditorContent('');
     toast({ title: 'Content Cleared', description: 'The editor has been cleared.' });
   }, [toast]);
-  
-  const processCommand = useCallback((transcript: string) => {
-    const command = transcript.toLowerCase().trim();
-    
-    if (command.includes(COMMANDS.SAVE_NOTE[language])) {
-      toast({title: "Voice Command", description: "Saving note..."});
-      handleSaveNote();
-      return true;
-    }
-    if (command.includes(COMMANDS.SUGGEST_TITLE[language])) {
-      toast({title: "Voice Command", description: "Suggesting a title..."});
-      handleSuggestTitle();
-      return true;
-    }
-    if (command.includes(COMMANDS.NEW_NOTE[language])) {
-      toast({title: "Voice Command", description: "Creating a new note..."});
-      handleNewNote();
-      return true;
-    }
-     if (command.includes(COMMANDS.CLEAR_EDITOR[language])) {
-      toast({title: "Voice Command", description: "Clearing editor content..."});
-      handleClearContent();
-      return true;
-    }
-    return false;
-  }, [language, handleSaveNote, handleSuggestTitle, handleNewNote, handleClearContent, toast]);
 
   // Effect for setting up SpeechRecognition instances
   useEffect(() => {
     if (!SpeechRecognition || !isMounted) return;
 
-    // Setup for transcription
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
-    recognitionRef.current.onend = () => setIsRecording(false);
+    recognitionRef.current.lang = language;
+    
+    recognitionRef.current.onstart = () => {
+      setIsRecording(true);
+      setStatusMessage('Listening for dictation...');
+    };
+    
+    recognitionRef.current.onend = () => {
+      setIsRecording(false);
+      setStatusMessage('Recording stopped.');
+    };
+    
     recognitionRef.current.onerror = (event: any) => {
-      if (event.error === 'aborted' || event.error === 'no-speech') return;
-      console.error('Transcription error:', event.error);
+      if (event.error === 'aborted' || event.error === 'no-speech') {
+        setStatusMessage('Recording stopped.');
+        return;
+      }
+      console.error('Speech recognition error:', event.error);
       toast({ variant: 'destructive', title: 'Speech Recognition Error', description: `Error: ${event.error}. Please check microphone.` });
       setIsRecording(false);
     };
+
     recognitionRef.current.onresult = (event: any) => {
       let finalTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -219,28 +197,7 @@ export default function LinguaNotePage() {
         setEditorContent(prev => prev + finalTranscript);
       }
     };
-    
-    // Setup for voice commands
-    commandRecognitionRef.current = new SpeechRecognition();
-    commandRecognitionRef.current.continuous = false; // Listen for a single command
-    commandRecognitionRef.current.interimResults = false;
-    commandRecognitionRef.current.onstart = () => setIsListeningForCommand(true);
-    commandRecognitionRef.current.onend = () => setIsListeningForCommand(false);
-    commandRecognitionRef.current.onerror = (event: any) => {
-      if (event.error === 'aborted' || event.error === 'no-speech') return;
-      console.error('Command recognition error:', event.error);
-      toast({ variant: 'destructive', title: 'Voice Command Error', description: `Error: ${event.error}.` });
-      setIsListeningForCommand(false);
-    };
-    commandRecognitionRef.current.onresult = (event: any) => {
-      const commandTranscript = event.results[0][0].transcript;
-      const commandProcessed = processCommand(commandTranscript);
-      if (!commandProcessed) {
-        toast({ variant: 'destructive', title: 'Command Not Recognized', description: `Could not understand the command "${commandTranscript}".` });
-      }
-    };
-
-  }, [isMounted, toast, processCommand]);
+  }, [isMounted, language, toast]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -294,34 +251,16 @@ export default function LinguaNotePage() {
     try {
       recognitionRef.current.lang = language;
       recognitionRef.current.start();
-      setIsRecording(true);
-      setStatusMessage('Listening for dictation...');
     } catch (e) {
       console.error("Could not start recording", e);
       toast({ variant: 'destructive', title: 'Recording Error', description: 'Could not start recording. Another app might be using the microphone.' });
-      setIsRecording(false);
     }
   }, [isRecording, language, toast]);
 
   const handleStopRecording = useCallback(() => {
     if (!isRecording || !recognitionRef.current) return;
     recognitionRef.current.stop();
-    setIsRecording(false);
-    setStatusMessage('Recording stopped.');
   }, [isRecording]);
-
-  const handleListenForCommand = useCallback(() => {
-    if (isListeningForCommand || !commandRecognitionRef.current) return;
-    try {
-      commandRecognitionRef.current.lang = language;
-      commandRecognitionRef.current.start();
-      toast({ title: 'Listening for Command', description: 'Please say a command like "save note".' });
-    } catch(e) {
-      console.error("Could not start command listener", e);
-      toast({ variant: 'destructive', title: 'Command Error', description: 'Could not start listening for commands.' });
-      setIsListeningForCommand(false);
-    }
-  }, [isListeningForCommand, language, toast]);
 
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -525,18 +464,6 @@ export default function LinguaNotePage() {
              <div className="flex items-center gap-3">
                 <AudioLines className="h-8 w-8 text-primary" />
                 <h1 className="text-2xl font-bold font-headline text-primary">LinguaNote</h1>
-                 {SpeechRecognition && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleListenForCommand} disabled={isListeningForCommand}>
-                        {isListeningForCommand ? <MicOff className="text-destructive animate-pulse" /> : <Mic />}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Use Voice Command</p>
-                    </TooltipContent>
-                  </Tooltip>
-                 )}
              </div>
              <Tooltip>
                 <TooltipTrigger asChild>
