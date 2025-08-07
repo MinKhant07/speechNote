@@ -28,6 +28,16 @@ if (typeof window !== 'undefined') {
   SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
 }
 
+// Voice Command Keywords
+const COMMANDS = {
+  SAVE_NOTE: { 'en-US': 'save note', 'my-MM': 'မှတ်စုသိမ်းပါ', 'th-TH': 'บันทึกโน้ต' },
+  SUGGEST_TITLE: { 'en-US': 'suggest title', 'my-MM': 'ခေါင်းစဉ်အကြံပြုပါ', 'th-TH': 'แนะนำชื่อเรื่อง' },
+  NEW_NOTE: { 'en-US': 'new note', 'my-MM': 'မှတ်စုအသစ်', 'th-TH': 'โน้ตใหม่' },
+  CLEAR_EDITOR: { 'en-US': 'clear editor', 'my-MM': 'အားလုံးဖျက်ပါ', 'th-TH': 'ล้าง' },
+};
+
+type Language = 'en-US' | 'my-MM' | 'th-TH';
+
 function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void }) {
   const [apiKey, setApiKey] = useState('');
 
@@ -46,7 +56,7 @@ function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void
             Enter Your Google AI API Key
           </CardTitle>
           <CardDescription>
-            To use SpeechNoteMm, please provide your Google AI API key. Your key will be saved securely in your browser.
+            To use LinguaNote, please provide your Google AI API key. Your key will be saved securely in your browser.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -58,8 +68,8 @@ function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             className="text-base"
           />
-          <Button onClick={handleSubmit} className="w-full bg-accent hover:bg-accent/90">
-            Start Using SpeechNoteMm
+          <Button onClick={handleSubmit} className="w-full" style={{backgroundColor: '#FF9800'}}>
+            Start Using LinguaNote
           </Button>
           <p className="text-xs text-center text-muted-foreground pt-2">
             Get your key from{' '}
@@ -76,7 +86,7 @@ function ApiKeyEntry({ onApiKeySubmit }: { onApiKeySubmit: (key: string) => void
 
 export default function LinguaNotePage() {
   const { toast } = useToast();
-  const [language, setLanguage] = useState('en-US');
+  const [language, setLanguage] = useState<Language>('en-US');
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
   const [editorTitle, setEditorTitle] = useState('');
@@ -92,10 +102,102 @@ export default function LinguaNotePage() {
 
   const recognitionRef = useRef<any>(null);
 
+  const handleSaveNote = useCallback(() => {
+    if (!editorContent.trim()) {
+      toast({ variant: 'destructive', title: 'Empty Note', description: 'Cannot save a blank note.' });
+      return;
+    }
+    const date = new Date().toISOString();
+    const title = editorTitle.trim() || editorContent.substring(0, 40).split('\n')[0] || 'Untitled Note';
+
+    if (activeNoteId) {
+      setNotes(notes.map(note =>
+        note.id === activeNoteId ? { ...note, title, content: editorContent, date } : note
+      ));
+      toast({ title: 'Note Updated', description: `"${title}" has been updated.` });
+    } else {
+      const newNote: Note = { id: `note-${Date.now()}`, title, content: editorContent, date };
+      setNotes(prevNotes => [newNote, ...prevNotes]);
+      setActiveNoteId(newNote.id);
+      toast({ title: 'Note Saved', description: `"${title}" has been saved.` });
+    }
+    setStatusMessage('Note saved to this browser successfully.');
+  }, [editorTitle, editorContent, activeNoteId, notes, toast]);
+
+  const handleSuggestTitle = useCallback(async () => {
+    if (!editorContent.trim() || !apiKey) {
+      toast({ variant: 'destructive', title: 'Cannot Suggest Title', description: 'Note content is empty. Please type or dictate something first.' });
+      return;
+    }
+    
+    setIsSuggestingTitle(true);
+    setStatusMessage('Generating a title for your note...');
+    try {
+      const result = await suggestTitle({ content: editorContent, language, apiKey });
+      setEditorTitle(result.title);
+      setStatusMessage('Title suggestion complete.');
+      toast({ title: 'Title Suggested!', description: 'A new title has been generated.' });
+    } catch(error) {
+      console.error('Title suggestion error:', error);
+      const errorMessage = (error instanceof Error) ? error.message : 'An unknown error occurred.';
+      setStatusMessage('Title suggestion failed.');
+      toast({ variant: 'destructive', title: 'Suggestion Error', description: `Failed to suggest a title. Reason: ${errorMessage}` });
+    } finally {
+      setIsSuggestingTitle(false);
+    }
+  }, [editorContent, language, apiKey, toast]);
+
+  const handleNewNote = useCallback(() => {
+    setActiveNoteId(null);
+    setEditorTitle('');
+    setEditorContent('');
+    setStatusMessage('Started a new note.');
+    setViewMode('list');
+    if (isRecording) {
+      recognitionRef.current?.stop();
+    }
+  }, [isRecording]);
+
+  const handleClearContent = useCallback(() => {
+    setEditorTitle('');
+    setEditorContent('');
+    toast({ title: 'Content Cleared', description: 'The editor has been cleared.' });
+  }, [toast]);
+  
+  const processCommand = useCallback((transcript: string) => {
+    const command = transcript.toLowerCase().trim();
+    
+    if (command.includes(COMMANDS.SAVE_NOTE[language])) {
+      setStatusMessage(`Command: Saving note...`);
+      toast({title: "Voice Command", description: "Saving note..."});
+      handleSaveNote();
+      return true;
+    }
+    if (command.includes(COMMANDS.SUGGEST_TITLE[language])) {
+      setStatusMessage(`Command: Suggesting title...`);
+      toast({title: "Voice Command", description: "Suggesting a title..."});
+      handleSuggestTitle();
+      return true;
+    }
+    if (command.includes(COMMANDS.NEW_NOTE[language])) {
+      setStatusMessage(`Command: Creating new note...`);
+      toast({title: "Voice Command", description: "Creating a new note..."});
+      handleNewNote();
+      return true;
+    }
+     if (command.includes(COMMANDS.CLEAR_EDITOR[language])) {
+      setStatusMessage(`Command: Clearing editor...`);
+      toast({title: "Voice Command", description: "Clearing editor content..."});
+      handleClearContent();
+      return true;
+    }
+    return false;
+  }, [language, handleSaveNote, handleSuggestTitle, handleNewNote, handleClearContent, toast]);
+
   useEffect(() => {
     setIsMounted(true);
     try {
-      const savedApiKey = localStorage.getItem('geminiApiKey');
+      const savedApiKey = localStorage.getItem('linguanote_apiKey');
       if (savedApiKey) {
         setApiKey(savedApiKey);
       }
@@ -117,9 +219,16 @@ export default function LinguaNotePage() {
     const recognition = recognitionRef.current;
     recognition.continuous = true;
     recognition.interimResults = true;
+    recognition.lang = language;
 
-    recognition.onstart = () => setIsRecording(true);
-    recognition.onend = () => setIsRecording(false);
+    recognition.onstart = () => {
+      setIsRecording(true);
+      setStatusMessage('Listening for content or commands...');
+    };
+    recognition.onend = () => {
+      setIsRecording(false);
+      setStatusMessage('Recording stopped. Ready for next command.');
+    };
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       toast({ variant: 'destructive', title: 'Speech Recognition Error', description: `Error: ${event.error}. Please check microphone permissions.` });
@@ -134,10 +243,15 @@ export default function LinguaNotePage() {
         }
       }
       if (finalTranscript) {
-        setEditorContent(prev => prev + finalTranscript);
+        // First, check for a command.
+        const commandProcessed = processCommand(finalTranscript);
+        // If it's not a command, append it to the content.
+        if (!commandProcessed) {
+          setEditorContent(prev => prev + finalTranscript);
+        }
       }
     };
-  }, [apiKey, toast]);
+  }, [apiKey, toast, language, processCommand]);
 
   useEffect(() => {
     if (isMounted) {
@@ -153,7 +267,7 @@ export default function LinguaNotePage() {
   const handleApiKeySubmit = (newApiKey: string) => {
     setApiKey(newApiKey);
     try {
-      localStorage.setItem('geminiApiKey', newApiKey);
+      localStorage.setItem('linguanote_apiKey', newApiKey);
       toast({ title: 'API Key Saved!', description: 'You can now start using the app.' });
     } catch (error) {
        console.error("Failed to save API key to localStorage", error);
@@ -163,7 +277,7 @@ export default function LinguaNotePage() {
 
   const handleChangeApiKey = () => {
      setApiKey(null);
-     localStorage.removeItem('geminiApiKey');
+     localStorage.removeItem('linguanote_apiKey');
      toast({ title: 'API Key Removed', description: 'Please enter a new API key to continue.' });
   }
 
@@ -173,7 +287,6 @@ export default function LinguaNotePage() {
     try {
       recognition.lang = language;
       recognition.start();
-      setStatusMessage('Listening...');
     } catch (e) {
       console.error("Could not start recording", e);
       toast({ variant: 'destructive', title: 'Recording Error', description: 'Could not start recording. Another app might be using the microphone.' });
@@ -185,7 +298,6 @@ export default function LinguaNotePage() {
     const recognition = recognitionRef.current;
     if (!isRecording || !recognition) return;
     recognition.stop();
-    setStatusMessage('Recording stopped.');
   }, [isRecording]);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -228,66 +340,6 @@ export default function LinguaNotePage() {
     };
   }, [toast, apiKey]);
   
-  const handleSuggestTitle = useCallback(async () => {
-    if (!editorContent.trim() || !apiKey) {
-      toast({ variant: 'destructive', title: 'Cannot Suggest Title', description: 'Note content is empty. Please type or dictate something first.' });
-      return;
-    }
-    
-    setIsSuggestingTitle(true);
-    setStatusMessage('Generating a title for your note...');
-    try {
-      const result = await suggestTitle({ content: editorContent, language, apiKey });
-      setEditorTitle(result.title);
-      setStatusMessage('Title suggestion complete.');
-      toast({ title: 'Title Suggested!', description: 'A new title has been generated.' });
-    } catch(error) {
-      console.error('Title suggestion error:', error);
-      const errorMessage = (error instanceof Error) ? error.message : 'An unknown error occurred.';
-      setStatusMessage('Title suggestion failed.');
-      toast({ variant: 'destructive', title: 'Suggestion Error', description: `Failed to suggest a title. Reason: ${errorMessage}` });
-    } finally {
-      setIsSuggestingTitle(false);
-    }
-  }, [editorContent, language, apiKey, toast]);
-
-  const handleNewNote = useCallback(() => {
-    if (isRecording) handleStopRecording();
-    setActiveNoteId(null);
-    setEditorTitle('');
-    setEditorContent('');
-    setStatusMessage('Started a new note.');
-    setViewMode('list');
-  }, [isRecording, handleStopRecording]);
-
-  const handleClearContent = useCallback(() => {
-    setEditorTitle('');
-    setEditorContent('');
-    toast({ title: 'Content Cleared', description: 'The editor has been cleared.' });
-  }, [toast]);
-  
-  const handleSaveNote = useCallback(() => {
-    if (!editorContent.trim()) {
-      toast({ variant: 'destructive', title: 'Empty Note', description: 'Cannot save a blank note.' });
-      return;
-    }
-    const date = new Date().toISOString();
-    const title = editorTitle.trim() || editorContent.substring(0, 40).split('\n')[0] || 'Untitled Note';
-
-    if (activeNoteId) {
-      setNotes(notes.map(note =>
-        note.id === activeNoteId ? { ...note, title, content: editorContent, date } : note
-      ));
-      toast({ title: 'Note Updated', description: `"${title}" has been updated.` });
-    } else {
-      const newNote: Note = { id: `note-${Date.now()}`, title, content: editorContent, date };
-      setNotes(prevNotes => [newNote, ...prevNotes]);
-      setActiveNoteId(newNote.id);
-      toast({ title: 'Note Saved', description: `"${title}" has been saved.` });
-    }
-    setStatusMessage('Note saved to this browser successfully.');
-  }, [editorTitle, editorContent, activeNoteId, notes, toast]);
-
   const handleSelectNote = useCallback((note: Note) => {
     if (isRecording || isTranscribing) {
       toast({ variant: 'destructive', title: 'Action Denied', description: 'Please wait for the current action to finish before switching notes.' });
@@ -336,7 +388,7 @@ export default function LinguaNotePage() {
     return <ApiKeyEntry onApiKeySubmit={handleApiKeySubmit} />;
   }
 
-  const isActionInProgress = isRecording || isTranscribing || isSuggestingTitle;
+  const isActionInProgress = isTranscribing || isSuggestingTitle;
   
   const NotesListView = (
     <div className="p-4 space-y-2">
@@ -448,7 +500,7 @@ export default function LinguaNotePage() {
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
              <div className="flex items-center gap-3">
                 <AudioLines className="h-8 w-8 text-primary" />
-                <h1 className="text-2xl font-bold font-headline text-primary">SpeechNoteMm</h1>
+                <h1 className="text-2xl font-bold font-headline text-primary">LinguaNote</h1>
              </div>
              <Tooltip>
                 <TooltipTrigger asChild>
@@ -474,7 +526,7 @@ export default function LinguaNotePage() {
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
                   <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-                    <Select value={language} onValueChange={setLanguage} disabled={isActionInProgress}>
+                    <Select value={language} onValueChange={val => setLanguage(val as Language)} disabled={isRecording || isActionInProgress}>
                       <SelectTrigger className="w-full sm:w-[180px]">
                         <SelectValue placeholder="Select Language" />
                       </SelectTrigger>
@@ -515,10 +567,10 @@ export default function LinguaNotePage() {
                       )}
                       <Tooltip>
                         <TooltipTrigger asChild>
-                            <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isActionInProgress}>
-                              <label htmlFor="file-upload" className={isActionInProgress ? 'cursor-not-allowed' : 'cursor-pointer'}>
+                            <Button variant="secondary" size="icon" asChild aria-label="Upload audio file" disabled={isRecording || isActionInProgress}>
+                              <label htmlFor="file-upload" className={isRecording || isActionInProgress ? 'cursor-not-allowed' : 'cursor-pointer'}>
                                 {isTranscribing ? <Loader2 className="animate-spin"/> : <Upload />}
-                                <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isActionInProgress}/>
+                                <input id="file-upload" type="file" className="hidden" accept="audio/*" onChange={handleFileUpload} disabled={isRecording || isActionInProgress}/>
                               </label>
                             </Button>
                         </TooltipTrigger>
@@ -536,11 +588,11 @@ export default function LinguaNotePage() {
                   className="text-lg font-semibold pr-12"
                   value={editorTitle}
                   onChange={(e) => setEditorTitle(e.target.value)}
-                  disabled={isActionInProgress}
+                  disabled={isRecording || isActionInProgress}
                 />
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground" onClick={handleSuggestTitle} disabled={isActionInProgress || !editorContent}>
+                    <Button variant="ghost" size="icon" className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground" onClick={handleSuggestTitle} disabled={isRecording || isActionInProgress || !editorContent}>
                       {isSuggestingTitle ? <Loader2 className="animate-spin" /> : <Sparkles />}
                     </Button>
                   </TooltipTrigger>
@@ -551,26 +603,26 @@ export default function LinguaNotePage() {
               </div>
 
               <Textarea
-                placeholder="Your transcript will appear here. You can also type directly."
+                placeholder="Your transcript will appear here. You can also type or issue a voice command like 'save note'."
                 className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50"
                 value={editorContent}
                 onChange={(e) => setEditorContent(e.target.value)}
-                disabled={isActionInProgress}
+                disabled={isRecording || isActionInProgress}
               />
               <div className="flex justify-end items-center gap-2">
-                <Button variant="outline" onClick={handleNewNote} disabled={isActionInProgress}>
+                <Button variant="outline" onClick={handleNewNote} disabled={isRecording || isActionInProgress}>
                     <FilePlus className="mr-2 h-4 w-4" />
                     New Note
                 </Button>
                  <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button variant="ghost" size="icon" onClick={handleClearContent} disabled={isActionInProgress} aria-label="Clear content">
+                        <Button variant="ghost" size="icon" onClick={handleClearContent} disabled={isRecording || isActionInProgress} aria-label="Clear content">
                             <Eraser className="h-4 w-4" />
                         </Button>
                     </TooltipTrigger>
-                    <TooltipContent><p>Clear content</p></TooltipContent>
+                    <TooltipContent><p>Clear Content</p></TooltipContent>
                 </Tooltip>
-                <Button onClick={handleSaveNote} style={{ backgroundColor: '#3EB6E5' }} className="hover:opacity-90" disabled={isActionInProgress}>
+                <Button onClick={handleSaveNote} style={{ backgroundColor: '#FF9800' }} className="hover:opacity-90" disabled={isRecording || isActionInProgress}>
                     <Save className="mr-2 h-4 w-4" />
                     {activeNoteId ? 'Update Note' : 'Save Note'}
                 </Button>
@@ -620,7 +672,7 @@ export default function LinguaNotePage() {
               </div>
               <Separator />
               <CardContent className="p-0 flex-grow">
-                <ScrollArea className={viewMode === 'grid' ? "h-[calc(100vh-280px)]" : "h-[500px]"}>
+                <ScrollArea className={viewMode === 'grid' ? "h-[calc(100vh-280px)]" : "h-[calc(100vh-350px)]"}>
                   {viewMode === 'list' ? NotesListView : NotesGridView}
                 </ScrollArea>
               </CardContent>
@@ -631,5 +683,3 @@ export default function LinguaNotePage() {
     </TooltipProvider>
   );
 }
-
-    
