@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles, Search, LayoutGrid, LayoutList } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles, Search, LayoutGrid, LayoutList, Eraser } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -177,6 +177,7 @@ export default function LinguaNotePage() {
     } catch (e) {
       console.error("Could not start recording", e);
       toast({ variant: 'destructive', title: 'Recording Error', description: 'Could not start recording. Another app might be using the microphone.' });
+      setIsRecording(false);
     }
   }, [isRecording, language, toast]);
 
@@ -259,6 +260,12 @@ export default function LinguaNotePage() {
     setViewMode('list');
   }, [isRecording, handleStopRecording]);
 
+  const handleClearContent = useCallback(() => {
+    setEditorTitle('');
+    setEditorContent('');
+    toast({ title: 'Content Cleared', description: 'The editor has been cleared.' });
+  }, [toast]);
+  
   const handleSaveNote = useCallback(() => {
     if (!editorContent.trim()) {
       toast({ variant: 'destructive', title: 'Empty Note', description: 'Cannot save a blank note.' });
@@ -550,12 +557,20 @@ export default function LinguaNotePage() {
                 onChange={(e) => setEditorContent(e.target.value)}
                 disabled={isActionInProgress}
               />
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end items-center gap-2">
                 <Button variant="outline" onClick={handleNewNote} disabled={isActionInProgress}>
                     <FilePlus className="mr-2 h-4 w-4" />
                     New Note
                 </Button>
-                <Button onClick={handleSaveNote} className="bg-accent hover:bg-accent/90" disabled={isActionInProgress}>
+                 <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" onClick={handleClearContent} disabled={isActionInProgress} aria-label="Clear content">
+                            <Eraser className="h-4 w-4" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Clear content</p></TooltipContent>
+                </Tooltip>
+                <Button onClick={handleSaveNote} style={{ backgroundColor: '#3EB6E5' }} className="hover:opacity-90" disabled={isActionInProgress}>
                     <Save className="mr-2 h-4 w-4" />
                     {activeNoteId ? 'Update Note' : 'Save Note'}
                 </Button>
@@ -616,3 +631,5 @@ export default function LinguaNotePage() {
     </TooltipProvider>
   );
 }
+
+    
