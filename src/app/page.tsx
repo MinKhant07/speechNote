@@ -30,10 +30,10 @@ if (typeof window !== 'undefined') {
 
 // Voice Command Keywords
 const COMMANDS = {
-  SAVE_NOTE: { 'en-US': 'save note', 'my-MM': 'မှတ်စုသိမ်းပါ', 'th-TH': 'บันทึกโน้ต' },
-  SUGGEST_TITLE: { 'en-US': 'suggest title', 'my-MM': 'ခေါင်းစဉ်အကြံပြုပါ', 'th-TH': 'แนะนำชื่อเรื่อง' },
+  SAVE_NOTE: { 'en-US': 'save note', 'my-MM': 'မှတ်စုသိမ်း', 'th-TH': 'บันทึกโน้ต' },
+  SUGGEST_TITLE: { 'en-US': 'suggest title', 'my-MM': 'ခေါင်းစဉ်အကြံပြု', 'th-TH': 'แนะนำชื่อเรื่อง' },
   NEW_NOTE: { 'en-US': 'new note', 'my-MM': 'မှတ်စုအသစ်', 'th-TH': 'โน้ตใหม่' },
-  CLEAR_EDITOR: { 'en-US': 'clear editor', 'my-MM': 'အားလုံးဖျက်ပါ', 'th-TH': 'ล้าง' },
+  CLEAR_EDITOR: { 'en-US': 'clear editor', 'my-MM': 'အားလုံးဖျက်', 'th-TH': 'ล้าง' },
 };
 
 type Language = 'en-US' | 'my-MM' | 'th-TH';
@@ -231,6 +231,11 @@ export default function LinguaNotePage() {
     };
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
+       // Ignore 'aborted' and 'no-speech' errors as they are not critical.
+      if (event.error === 'aborted' || event.error === 'no-speech') {
+        setIsRecording(false);
+        return;
+      }
       toast({ variant: 'destructive', title: 'Speech Recognition Error', description: `Error: ${event.error}. Please check microphone permissions.` });
       setIsRecording(false);
     };
@@ -622,7 +627,7 @@ export default function LinguaNotePage() {
                     </TooltipTrigger>
                     <TooltipContent><p>Clear Content</p></TooltipContent>
                 </Tooltip>
-                <Button onClick={handleSaveNote} style={{ backgroundColor: '#FF9800' }} className="hover:opacity-90" disabled={isRecording || isActionInProgress}>
+                <Button onClick={handleSaveNote} style={{ backgroundColor: '#3EB6E5' }} className="hover:opacity-90" disabled={isRecording || isActionInProgress}>
                     <Save className="mr-2 h-4 w-4" />
                     {activeNoteId ? 'Update Note' : 'Save Note'}
                 </Button>
@@ -683,3 +688,5 @@ export default function LinguaNotePage() {
     </TooltipProvider>
   );
 }
+
+    
