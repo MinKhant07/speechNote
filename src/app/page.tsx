@@ -294,7 +294,7 @@ export default function LinguaNotePage() {
     try {
       recognitionRef.current.lang = language;
       recognitionRef.current.start();
-      setIsRecording(true); // This is the fix
+      setIsRecording(true);
       setStatusMessage('Listening for dictation...');
     } catch (e) {
       console.error("Could not start recording", e);
