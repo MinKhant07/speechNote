@@ -165,23 +165,25 @@ export default function SpeechNoteMmPage() {
   // Effect for setting up SpeechRecognition instances
   useEffect(() => {
     if (!SpeechRecognition || !isMounted) return;
-
-    recognitionRef.current = new SpeechRecognition();
-    recognitionRef.current.continuous = true;
-    recognitionRef.current.interimResults = true;
-    
-    recognitionRef.current.onstart = () => {
-        setIsRecording(true);
-        setStatusMessage('Listening for dictation...');
+  
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false; // Set to false to only get final results
+  
+    recognition.onstart = () => {
+      setIsRecording(true);
+      setStatusMessage('Listening for dictation...');
     };
-
-    recognitionRef.current.onend = () => {
+  
+    recognition.onend = () => {
       setIsRecording(false);
       setStatusMessage('Recording stopped.');
     };
-    
-    recognitionRef.current.onerror = (event: any) => {
+  
+    recognition.onerror = (event: any) => {
       if (event.error === 'aborted' || event.error === 'no-speech') {
+        // These are normal terminations, no need to show a user-facing error
+        console.log(`Speech recognition stopped: ${event.error}`);
         setStatusMessage('Recording stopped.');
         return;
       }
@@ -189,18 +191,17 @@ export default function SpeechNoteMmPage() {
       toast({ variant: 'destructive', title: 'Speech Recognition Error', description: `Error: ${event.error}. Please check microphone.` });
       setIsRecording(false);
     };
-
-    recognitionRef.current.onresult = (event: any) => {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript.trim() + ' ';
-        }
-      }
+  
+    recognition.onresult = (event: any) => {
+      // Since interimResults is false, we can directly access the final result
+      const finalTranscript = event.results[event.results.length - 1][0].transcript.trim();
       if (finalTranscript) {
-        setEditorContent(prev => prev + finalTranscript);
+        setEditorContent(prev => prev + finalTranscript + ' ');
       }
     };
+    
+    recognitionRef.current = recognition;
+  
   }, [isMounted, toast]);
 
   useEffect(() => {
@@ -270,6 +271,7 @@ export default function SpeechNoteMmPage() {
 
   const handleStopRecording = useCallback(() => {
     if (!isRecording || !recognitionRef.current) return;
+    setIsRecording(false);
     recognitionRef.current.stop();
   }, [isRecording]);
 
@@ -293,7 +295,7 @@ export default function SpeechNoteMmPage() {
         setStatusMessage(`Transcribing audio... This may take a moment.`);
         try {
             const result: TranscribeAudioOutput = await transcribeAudio({ audioDataUri, apiKey });
-            setEditorContent(result.transcript);
+            setEditorContent(prevContent => prevContent + result.transcript);
             setActiveNoteAudioUri(audioDataUri);
             setStatusMessage('Transcription complete.');
             toast({ title: 'Success', description: 'Audio transcribed and ready for playback.' });
@@ -595,7 +597,7 @@ export default function SpeechNoteMmPage() {
                   </TooltipContent>
                 </Tooltip>
               </div>
-
+              
               <Textarea
                 placeholder="Your transcript will appear here. You can also type or paste your text."
                 className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50"
@@ -603,7 +605,7 @@ export default function SpeechNoteMmPage() {
                 onChange={(e) => setEditorContent(e.target.value)}
                 disabled={isRecording || isActionInProgress}
               />
-
+              
               <div className="flex justify-end items-center gap-2">
                 <Button variant="outline" onClick={handleNewNote} disabled={isRecording || isActionInProgress}>
                     <FilePlus className="mr-2 h-4 w-4" />
