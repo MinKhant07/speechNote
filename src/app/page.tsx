@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { format } from 'date-fns';
-import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles, Search, LayoutGrid, LayoutList, Eraser } from 'lucide-react';
+import { AudioLines, Mic, MicOff, Save, Trash2, Upload, FilePlus, AlertTriangle, Copy, Loader2, KeyRound, Pencil, LogOut, Sparkles, Search, LayoutGrid, LayoutList, Eraser, PlayCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,15 +12,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from "@/hooks/use-toast";
-import { transcribeAudio } from '@/ai/flows/transcribeAudio';
+import { transcribeAudio, type TranscribeAudioOutput } from '@/ai/flows/transcribeAudio';
 import { suggestTitle } from '@/ai/flows/suggestTitle';
 import { cn } from '@/lib/utils';
+
+type Word = {
+  word: string;
+  startTime: number;
+  endTime: number;
+};
 
 type Note = {
   id: string;
   title: string;
   content: string;
   date: string;
+  audioDataUri?: string;
+  words?: Word[];
 };
 
 let SpeechRecognition: any = null;
@@ -92,6 +100,11 @@ export default function SpeechNoteMmPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
+  const [activeNoteAudioUri, setActiveNoteAudioUri] = useState<string | undefined>(undefined);
+  const [activeNoteWords, setActiveNoteWords] = useState<Word[]>([]);
+  const [currentWordIndex, setCurrentWordIndex] = useState(-1);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
   const recognitionRef = useRef<any>(null);
 
 
@@ -105,17 +118,17 @@ export default function SpeechNoteMmPage() {
 
     if (activeNoteId) {
       setNotes(notes.map(note =>
-        note.id === activeNoteId ? { ...note, title, content: editorContent, date } : note
+        note.id === activeNoteId ? { ...note, title, content: editorContent, date, audioDataUri: activeNoteAudioUri, words: activeNoteWords } : note
       ));
       toast({ title: 'Note Updated', description: `"${title}" has been updated.` });
     } else {
-      const newNote: Note = { id: `note-${Date.now()}`, title, content: editorContent, date };
+      const newNote: Note = { id: `note-${Date.now()}`, title, content: editorContent, date, audioDataUri: activeNoteAudioUri, words: activeNoteWords };
       setNotes(prevNotes => [newNote, ...prevNotes]);
       setActiveNoteId(newNote.id);
       toast({ title: 'Note Saved', description: `"${title}" has been saved.` });
     }
     setStatusMessage('Note saved to this browser successfully.');
-  }, [editorTitle, editorContent, activeNoteId, notes, toast]);
+  }, [editorTitle, editorContent, activeNoteId, notes, toast, activeNoteAudioUri, activeNoteWords]);
 
   const handleSuggestTitle = useCallback(async () => {
     if (!editorContent.trim() || !apiKey) {
@@ -144,6 +157,13 @@ export default function SpeechNoteMmPage() {
     setActiveNoteId(null);
     setEditorTitle('');
     setEditorContent('');
+    setActiveNoteAudioUri(undefined);
+    setActiveNoteWords([]);
+    setCurrentWordIndex(-1);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     setStatusMessage('Started a new note.');
     setViewMode('list');
     if (isRecording) {
@@ -154,6 +174,9 @@ export default function SpeechNoteMmPage() {
   const handleClearContent = useCallback(() => {
     setEditorTitle('');
     setEditorContent('');
+    setActiveNoteAudioUri(undefined);
+    setActiveNoteWords([]);
+    setCurrentWordIndex(-1);
     toast({ title: 'Content Cleared', description: 'The editor has been cleared.' });
   }, [toast]);
 
@@ -167,10 +190,9 @@ export default function SpeechNoteMmPage() {
     recognitionRef.current.lang = language;
     
     recognitionRef.current.onstart = () => {
-      setIsRecording(true);
-      setStatusMessage('Listening for dictation...');
+        setStatusMessage('Listening for dictation...');
     };
-    
+
     recognitionRef.current.onend = () => {
       setIsRecording(false);
       setStatusMessage('Recording stopped.');
@@ -249,9 +271,11 @@ export default function SpeechNoteMmPage() {
   const handleStartRecording = useCallback(() => {
     if (isRecording || !recognitionRef.current) return;
     try {
+      setIsRecording(true);
       recognitionRef.current.lang = language;
       recognitionRef.current.start();
     } catch (e) {
+      setIsRecording(false);
       console.error("Could not start recording", e);
       toast({ variant: 'destructive', title: 'Recording Error', description: 'Could not start recording. Another app might be using the microphone.' });
     }
@@ -260,6 +284,7 @@ export default function SpeechNoteMmPage() {
   const handleStopRecording = useCallback(() => {
     if (!isRecording || !recognitionRef.current) return;
     recognitionRef.current.stop();
+    setIsRecording(false);
   }, [isRecording]);
 
 
@@ -281,10 +306,12 @@ export default function SpeechNoteMmPage() {
         const audioDataUri = reader.result as string;
         setStatusMessage(`Transcribing audio... This may take a moment.`);
         try {
-            const result = await transcribeAudio({ audioDataUri, apiKey });
+            const result: TranscribeAudioOutput = await transcribeAudio({ audioDataUri, apiKey });
             setEditorContent(prev => prev + result.transcript + '\n');
+            setActiveNoteAudioUri(audioDataUri);
+            setActiveNoteWords(prev => [...prev, ...result.words]);
             setStatusMessage('Transcription complete.');
-            toast({ title: 'Success', description: 'Audio transcribed successfully.' });
+            toast({ title: 'Success', description: 'Audio transcribed and ready for playback.' });
         } catch (error) {
             console.error('Transcription error:', error);
             const errorMessage = (error instanceof Error) ? error.message : 'An unknown error occurred.';
@@ -311,6 +338,13 @@ export default function SpeechNoteMmPage() {
     setActiveNoteId(note.id);
     setEditorTitle(note.title);
     setEditorContent(note.content);
+    setActiveNoteAudioUri(note.audioDataUri);
+    setActiveNoteWords(note.words || []);
+    setCurrentWordIndex(-1);
+    if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+    }
     setStatusMessage(`Viewing note: "${note.title}"`);
     setViewMode('list'); // Switch back to list view when a note is selected for editing
   }, [isRecording, isTranscribing, toast]);
@@ -334,6 +368,15 @@ export default function SpeechNoteMmPage() {
     navigator.clipboard.writeText(content);
     toast({ title: 'Copied!', description: 'Note content copied to clipboard.' });
   }, [toast]);
+  
+  const handleTimeUpdate = useCallback(() => {
+    if (!audioRef.current || !activeNoteWords.length) return;
+    const currentTime = audioRef.current.currentTime;
+    const activeWord = activeNoteWords.findIndex(
+      (word) => currentTime >= word.startTime && currentTime <= word.endTime
+    );
+    setCurrentWordIndex(activeWord);
+  }, [activeNoteWords]);
 
   const filteredNotes = useMemo(() => {
     if (!searchQuery) return notes;
@@ -342,6 +385,40 @@ export default function SpeechNoteMmPage() {
       note.content.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [notes, searchQuery]);
+
+  const TranscribedContent = () => {
+    if (!activeNoteWords.length) {
+      return <p>{editorContent}</p>;
+    }
+    
+    let currentPos = 0;
+    const contentWithHighlights = [];
+    
+    activeNoteWords.forEach((word, index) => {
+      const wordIndexInContent = editorContent.indexOf(word.word, currentPos);
+
+      if (wordIndexInContent > currentPos) {
+        contentWithHighlights.push(
+          <span key={`text-${index}`}>{editorContent.substring(currentPos, wordIndexInContent)}</span>
+        );
+      }
+      
+      contentWithHighlights.push(
+        <span key={`word-${index}`} className={cn({ 'bg-primary/30 rounded': index === currentWordIndex })}>
+          {word.word}
+        </span>
+      );
+      currentPos = wordIndexInContent + word.word.length;
+    });
+
+    if (currentPos < editorContent.length) {
+       contentWithHighlights.push(
+         <span key="text-end">{editorContent.substring(currentPos)}</span>
+       );
+    }
+    
+    return <div className="leading-relaxed">{contentWithHighlights}</div>;
+  };
   
   if (!isMounted) {
     return null; // or a loading spinner
@@ -369,11 +446,14 @@ export default function SpeechNoteMmPage() {
             className={`group p-3 rounded-lg border cursor-pointer transition-colors ${activeNoteId === note.id ? 'bg-primary/10 border-primary' : 'hover:bg-muted/50'}`}
           >
             <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-semibold truncate max-w-[200px]">{note.title}</h3>
-                <time dateTime={note.date} className="text-xs text-muted-foreground">
-                  {format(new Date(note.date), "PPP p")}
-                </time>
+              <div className="flex items-center gap-2">
+                 {note.audioDataUri && <PlayCircle className="h-5 w-5 text-primary/70" />}
+                <div>
+                    <h3 className="font-semibold truncate max-w-[200px]">{note.title}</h3>
+                    <time dateTime={note.date} className="text-xs text-muted-foreground">
+                      {format(new Date(note.date), "PPP p")}
+                    </time>
+                </div>
               </div>
               <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Tooltip>
@@ -428,7 +508,10 @@ export default function SpeechNoteMmPage() {
             className="cursor-pointer hover:shadow-primary/20 hover:shadow-lg transition-shadow"
           >
             <CardHeader>
-              <CardTitle className="truncate font-headline text-lg">{note.title}</CardTitle>
+              <CardTitle className="truncate font-headline text-lg flex items-center gap-2">
+                {note.audioDataUri && <PlayCircle className="h-5 w-5 text-primary/70" />}
+                {note.title}
+              </CardTitle>
               <CardDescription>{format(new Date(note.date), "PPP p")}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -544,6 +627,22 @@ export default function SpeechNoteMmPage() {
                 </CardContent>
               </Card>
 
+              {activeNoteAudioUri && (
+                <Card>
+                    <CardContent className="p-4">
+                        <audio
+                            ref={audioRef}
+                            src={activeNoteAudioUri}
+                            controls
+                            className="w-full"
+                            onTimeUpdate={handleTimeUpdate}
+                            onEnded={() => setCurrentWordIndex(-1)}
+                            onPause={() => setCurrentWordIndex(-1)}
+                        />
+                    </CardContent>
+                </Card>
+              )}
+
               <div className="relative">
                 <Input
                   type="text"
@@ -565,13 +664,20 @@ export default function SpeechNoteMmPage() {
                 </Tooltip>
               </div>
 
-              <Textarea
-                placeholder="Your transcript will appear here. You can also type or issue a voice command like 'save note'."
-                className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50"
-                value={editorContent}
-                onChange={(e) => setEditorContent(e.target.value)}
-                disabled={isRecording || isActionInProgress}
-              />
+              {activeNoteWords && activeNoteWords.length > 0 ? (
+                 <Card className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50 overflow-y-auto">
+                   <TranscribedContent />
+                 </Card>
+              ) : (
+                <Textarea
+                  placeholder="Your transcript will appear here. You can also type or paste your text."
+                  className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50"
+                  value={editorContent}
+                  onChange={(e) => setEditorContent(e.target.value)}
+                  disabled={isRecording || isActionInProgress}
+                />
+              )}
+
               <div className="flex justify-end items-center gap-2">
                 <Button variant="outline" onClick={handleNewNote} disabled={isRecording || isActionInProgress}>
                     <FilePlus className="mr-2 h-4 w-4" />

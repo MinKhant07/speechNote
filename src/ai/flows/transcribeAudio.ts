@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview A flow for transcribing audio files.
+ * @fileOverview A flow for transcribing audio files with word-level timestamps.
  *
  * - transcribeAudio - A function that handles the audio transcription process.
  * - TranscribeAudioInput - The input type for the transcribeAudio function.
@@ -19,10 +19,17 @@ const TranscribeAudioInputSchema = z.object({
 });
 type TranscribeAudioInput = z.infer<typeof TranscribeAudioInputSchema>;
 
-const TranscribeAudioOutputSchema = z.object({
-  transcript: z.string().describe('The transcribed text from the audio.'),
+const WordTimestampSchema = z.object({
+  word: z.string(),
+  startTime: z.number(),
+  endTime: z.number(),
 });
-type TranscribeAudioOutput = z.infer<typeof TranscribeAudioOutputSchema>;
+
+const TranscribeAudioOutputSchema = z.object({
+  transcript: z.string().describe('The full transcribed text from the audio.'),
+  words: z.array(WordTimestampSchema).describe('Array of words with their timestamps.'),
+});
+export type TranscribeAudioOutput = z.infer<typeof TranscribeAudioOutputSchema>;
 
 export async function transcribeAudio(
   input: TranscribeAudioInput
@@ -40,6 +47,21 @@ export async function transcribeAudio(
     }
 
     const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${input.apiKey}`;
+    
+    const prompt = `Transcribe the following audio. Provide the full transcript as a single string. Also, provide an array of objects, where each object represents a word and contains 'word', 'startTime', and 'endTime' in seconds.
+
+Return the result as a valid JSON object with two keys: "transcript" and "words".
+
+Example:
+{
+  "transcript": "Hello world.",
+  "words": [
+    { "word": "Hello", "startTime": 0.1, "endTime": 0.5 },
+    { "word": "world.", "startTime": 0.6, "endTime": 1.0 }
+  ]
+}
+`;
+
 
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -51,7 +73,7 @@ export async function transcribeAudio(
           {
             parts: [
               {
-                text: 'Transcribe the following audio recording.',
+                text: prompt,
               },
               {
                 inline_data: {
@@ -62,6 +84,9 @@ export async function transcribeAudio(
             ],
           },
         ],
+        "generationConfig": {
+          "response_mime_type": "application/json",
+        }
       }),
     });
 
@@ -73,13 +98,20 @@ export async function transcribeAudio(
     }
 
     const responseData = await response.json();
-    const transcript = responseData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    
-    return { transcript };
+    const responseText = responseData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const parsedResult = JSON.parse(responseText);
+
+    const validatedResult = TranscribeAudioOutputSchema.parse(parsedResult);
+
+    return validatedResult;
 
   } catch (error) {
     console.error('Transcription failed:', error);
     if (error instanceof Error) {
+        // Check for specific Zod error to provide more context
+        if (error.name === 'ZodError') {
+             throw new Error('AI returned an unexpected format. Please try again.');
+        }
         throw error;
     }
     throw new Error('An unknown error occurred during transcription.');
