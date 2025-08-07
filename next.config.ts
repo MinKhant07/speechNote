@@ -21,3 +21,13 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // ဒီတစ်ကြောင်းကို ထပ်ထည့်ပေးပါ
+  output: 'export',
+
+  // တခြား config တွေ ဒီမှာရှိနိုင်ပါတယ်
+};
+
+export default nextConfig;
