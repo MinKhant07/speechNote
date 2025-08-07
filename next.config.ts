@@ -1,6 +1,9 @@
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // ဒီနေရာမှာ အောက်ကတစ်ကြောင်းကို ပေါင်းထည့်လိုက်ပါ
+  output: 'export',
+
   /* config options here */
   typescript: {
     ignoreBuildErrors: true,
@@ -11,23 +14,13 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: 'https',
+        protocol: 'https' as const, // For stricter TypeScript, add 'as const'
         hostname: 'placehold.co',
         port: '',
         pathname: '/**',
       },
     ],
   },
-};
-
-export default nextConfig;
-
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  // ဒီတစ်ကြောင်းကို ထပ်ထည့်ပေးပါ
-  output: 'export',
-
-  // တခြား config တွေ ဒီမှာရှိနိုင်ပါတယ်
 };
 
 export default nextConfig;
