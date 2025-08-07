@@ -190,6 +190,7 @@ export default function SpeechNoteMmPage() {
     recognitionRef.current.lang = language;
     
     recognitionRef.current.onstart = () => {
+        setIsRecording(true);
         setStatusMessage('Listening for dictation...');
     };
 
@@ -307,9 +308,9 @@ export default function SpeechNoteMmPage() {
         setStatusMessage(`Transcribing audio... This may take a moment.`);
         try {
             const result: TranscribeAudioOutput = await transcribeAudio({ audioDataUri, apiKey });
-            setEditorContent(prev => prev + result.transcript + '\n');
+            setEditorContent(result.transcript);
             setActiveNoteAudioUri(audioDataUri);
-            setActiveNoteWords(prev => [...prev, ...result.words]);
+            setActiveNoteWords(result.words);
             setStatusMessage('Transcription complete.');
             toast({ title: 'Success', description: 'Audio transcribed and ready for playback.' });
         } catch (error) {
@@ -393,13 +394,25 @@ export default function SpeechNoteMmPage() {
     
     let currentPos = 0;
     const contentWithHighlights = [];
-    
-    activeNoteWords.forEach((word, index) => {
-      const wordIndexInContent = editorContent.indexOf(word.word, currentPos);
+    const fullText = editorContent;
 
+    activeNoteWords.forEach((word, index) => {
+      const wordIndexInContent = fullText.indexOf(word.word, currentPos);
+      
+      if (wordIndexInContent === -1) {
+          // If word not found, just append it. Could be due to edits or AI inaccuracies.
+          contentWithHighlights.push(
+            <span key={`word-${index}`} className={cn({ 'bg-primary/30 rounded': index === currentWordIndex })}>
+              {word.word + ' '}
+            </span>
+          );
+          currentPos += word.word.length + 1;
+          return;
+      }
+      
       if (wordIndexInContent > currentPos) {
         contentWithHighlights.push(
-          <span key={`text-${index}`}>{editorContent.substring(currentPos, wordIndexInContent)}</span>
+          <span key={`text-${index}`}>{fullText.substring(currentPos, wordIndexInContent)}</span>
         );
       }
       
@@ -411,13 +424,13 @@ export default function SpeechNoteMmPage() {
       currentPos = wordIndexInContent + word.word.length;
     });
 
-    if (currentPos < editorContent.length) {
+    if (currentPos < fullText.length) {
        contentWithHighlights.push(
-         <span key="text-end">{editorContent.substring(currentPos)}</span>
+         <span key="text-end">{fullText.substring(currentPos)}</span>
        );
     }
     
-    return <div className="leading-relaxed">{contentWithHighlights}</div>;
+    return <div className="leading-relaxed p-4">{contentWithHighlights}</div>;
   };
   
   if (!isMounted) {
@@ -429,6 +442,7 @@ export default function SpeechNoteMmPage() {
   }
 
   const isActionInProgress = isTranscribing || isSuggestingTitle;
+  const isTranscribedNoteActive = activeNoteWords && activeNoteWords.length > 0;
   
   const NotesListView = (
     <div className="p-4 space-y-2">
@@ -664,8 +678,8 @@ export default function SpeechNoteMmPage() {
                 </Tooltip>
               </div>
 
-              {activeNoteWords && activeNoteWords.length > 0 ? (
-                 <Card className="flex-grow min-h-[400px] text-base p-4 rounded-lg shadow-inner bg-background/50 overflow-y-auto">
+              {isTranscribedNoteActive ? (
+                 <Card className="flex-grow min-h-[400px] text-base rounded-lg shadow-inner bg-background/50 overflow-y-auto">
                    <TranscribedContent />
                  </Card>
               ) : (
