@@ -92,6 +92,7 @@ export default function LinguaNotePage() {
   const [editorTitle, setEditorTitle] = useState('');
   const [editorContent, setEditorContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isListeningForCommand, setIsListeningForCommand] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSuggestingTitle, setIsSuggestingTitle] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Welcome! Your notes are saved in this browser.');
@@ -101,6 +102,8 @@ export default function LinguaNotePage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   const recognitionRef = useRef<any>(null);
+  const commandRecognitionRef = useRef<any>(null);
+
 
   const handleSaveNote = useCallback(() => {
     if (!editorContent.trim()) {
@@ -168,31 +171,77 @@ export default function LinguaNotePage() {
     const command = transcript.toLowerCase().trim();
     
     if (command.includes(COMMANDS.SAVE_NOTE[language])) {
-      setStatusMessage(`Command: Saving note...`);
       toast({title: "Voice Command", description: "Saving note..."});
       handleSaveNote();
       return true;
     }
     if (command.includes(COMMANDS.SUGGEST_TITLE[language])) {
-      setStatusMessage(`Command: Suggesting title...`);
       toast({title: "Voice Command", description: "Suggesting a title..."});
       handleSuggestTitle();
       return true;
     }
     if (command.includes(COMMANDS.NEW_NOTE[language])) {
-      setStatusMessage(`Command: Creating new note...`);
       toast({title: "Voice Command", description: "Creating a new note..."});
       handleNewNote();
       return true;
     }
      if (command.includes(COMMANDS.CLEAR_EDITOR[language])) {
-      setStatusMessage(`Command: Clearing editor...`);
       toast({title: "Voice Command", description: "Clearing editor content..."});
       handleClearContent();
       return true;
     }
     return false;
   }, [language, handleSaveNote, handleSuggestTitle, handleNewNote, handleClearContent, toast]);
+
+  // Effect for setting up SpeechRecognition instances
+  useEffect(() => {
+    if (!SpeechRecognition || !isMounted) return;
+
+    // Setup for transcription
+    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current.continuous = true;
+    recognitionRef.current.interimResults = true;
+    recognitionRef.current.onstart = () => setIsRecording(true);
+    recognitionRef.current.onend = () => setIsRecording(false);
+    recognitionRef.current.onerror = (event: any) => {
+      if (event.error === 'aborted' || event.error === 'no-speech') return;
+      console.error('Transcription error:', event.error);
+      toast({ variant: 'destructive', title: 'Speech Recognition Error', description: `Error: ${event.error}. Please check microphone.` });
+      setIsRecording(false);
+    };
+    recognitionRef.current.onresult = (event: any) => {
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript.trim() + ' ';
+        }
+      }
+      if (finalTranscript) {
+        setEditorContent(prev => prev + finalTranscript);
+      }
+    };
+    
+    // Setup for voice commands
+    commandRecognitionRef.current = new SpeechRecognition();
+    commandRecognitionRef.current.continuous = false; // Listen for a single command
+    commandRecognitionRef.current.interimResults = false;
+    commandRecognitionRef.current.onstart = () => setIsListeningForCommand(true);
+    commandRecognitionRef.current.onend = () => setIsListeningForCommand(false);
+    commandRecognitionRef.current.onerror = (event: any) => {
+      if (event.error === 'aborted' || event.error === 'no-speech') return;
+      console.error('Command recognition error:', event.error);
+      toast({ variant: 'destructive', title: 'Voice Command Error', description: `Error: ${event.error}.` });
+      setIsListeningForCommand(false);
+    };
+    commandRecognitionRef.current.onresult = (event: any) => {
+      const commandTranscript = event.results[0][0].transcript;
+      const commandProcessed = processCommand(commandTranscript);
+      if (!commandProcessed) {
+        toast({ variant: 'destructive', title: 'Command Not Recognized', description: `Could not understand the command "${commandTranscript}".` });
+      }
+    };
+
+  }, [isMounted, toast, processCommand]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -212,51 +261,6 @@ export default function LinguaNotePage() {
     }
   }, [toast]);
   
-  useEffect(() => {
-    if (!apiKey || !SpeechRecognition) return;
-
-    recognitionRef.current = new SpeechRecognition();
-    const recognition = recognitionRef.current;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = language;
-
-    recognition.onstart = () => {
-      setIsRecording(true);
-      setStatusMessage('Listening for content or commands...');
-    };
-    recognition.onend = () => {
-      setIsRecording(false);
-      setStatusMessage('Recording stopped. Ready for next command.');
-    };
-    recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
-       // Ignore 'aborted' and 'no-speech' errors as they are not critical.
-      if (event.error === 'aborted' || event.error === 'no-speech') {
-        setIsRecording(false);
-        return;
-      }
-      toast({ variant: 'destructive', title: 'Speech Recognition Error', description: `Error: ${event.error}. Please check microphone permissions.` });
-      setIsRecording(false);
-    };
-
-    recognition.onresult = (event: any) => {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript.trim() + ' ';
-        }
-      }
-      if (finalTranscript) {
-        // First, check for a command.
-        const commandProcessed = processCommand(finalTranscript);
-        // If it's not a command, append it to the content.
-        if (!commandProcessed) {
-          setEditorContent(prev => prev + finalTranscript);
-        }
-      }
-    };
-  }, [apiKey, toast, language, processCommand]);
 
   useEffect(() => {
     if (isMounted) {
@@ -287,11 +291,11 @@ export default function LinguaNotePage() {
   }
 
   const handleStartRecording = useCallback(() => {
-    const recognition = recognitionRef.current;
-    if (isRecording || !recognition) return;
+    if (isRecording || !recognitionRef.current) return;
     try {
-      recognition.lang = language;
-      recognition.start();
+      recognitionRef.current.lang = language;
+      recognitionRef.current.start();
+      setStatusMessage('Listening for dictation...');
     } catch (e) {
       console.error("Could not start recording", e);
       toast({ variant: 'destructive', title: 'Recording Error', description: 'Could not start recording. Another app might be using the microphone.' });
@@ -300,10 +304,24 @@ export default function LinguaNotePage() {
   }, [isRecording, language, toast]);
 
   const handleStopRecording = useCallback(() => {
-    const recognition = recognitionRef.current;
-    if (!isRecording || !recognition) return;
-    recognition.stop();
+    if (!isRecording || !recognitionRef.current) return;
+    recognitionRef.current.stop();
+    setStatusMessage('Recording stopped.');
   }, [isRecording]);
+
+  const handleListenForCommand = useCallback(() => {
+    if (isListeningForCommand || !commandRecognitionRef.current) return;
+    try {
+      commandRecognitionRef.current.lang = language;
+      commandRecognitionRef.current.start();
+      toast({ title: 'Listening for Command', description: 'Please say a command like "save note".' });
+    } catch(e) {
+      console.error("Could not start command listener", e);
+      toast({ variant: 'destructive', title: 'Command Error', description: 'Could not start listening for commands.' });
+      setIsListeningForCommand(false);
+    }
+  }, [isListeningForCommand, language, toast]);
+
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -506,6 +524,18 @@ export default function LinguaNotePage() {
              <div className="flex items-center gap-3">
                 <AudioLines className="h-8 w-8 text-primary" />
                 <h1 className="text-2xl font-bold font-headline text-primary">LinguaNote</h1>
+                 {SpeechRecognition && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleListenForCommand} disabled={isListeningForCommand}>
+                        {isListeningForCommand ? <MicOff className="text-destructive animate-pulse" /> : <Mic />}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Use Voice Command</p>
+                    </TooltipContent>
+                  </Tooltip>
+                 )}
              </div>
              <Tooltip>
                 <TooltipTrigger asChild>
@@ -688,5 +718,3 @@ export default function LinguaNotePage() {
     </TooltipProvider>
   );
 }
-
-    
